@@ -62,7 +62,7 @@ import com.datamelt.util.RowFieldCollection;
  * 
  * The source topic data is expected to be in JSON format. Output will be in JSON format.
  * 
- * @author uwe geercken - 2018-05-28
+ * @author uwe geercken - 2018-05-30
  *
  */
 public class RuleEngineConsumerProducer
@@ -111,15 +111,13 @@ public class RuleEngineConsumerProducer
 			this.ruleEngine.setPreserveRuleExcecutionResults(false);
 		}
 
-		final Thread mainThread = Thread.currentThread();
 		Runtime.getRuntime().addShutdownHook(new Thread()
 		{
 		    public void run() {
-		        keepRunning = false;
+	        	System.out.println(getSystemMessage(Constants.LEVEL_INFO,"program shutdown..."));
 		        try
 		        {
-		        	System.out.println("program shutdown...");
-		        	mainThread.join();
+			    	keepRunning = false;
 		        }
 		        catch(Exception ex)
 		        {

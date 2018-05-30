@@ -2,6 +2,13 @@ package com.datamelt.util;
 
 import org.json.JSONObject;
 
+/**
+ * Formats RowFieldCollection to JSON or vice versa.
+ * 
+ * 
+ * @author uwe.geercken@web.de - 2018-05-30
+ *
+ */
 public class FormatConverter
 {
 	/**
