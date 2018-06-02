@@ -89,8 +89,8 @@ public class RuleEngineConsumerProducer
 	private boolean referenceFieldsCollected 						 = false;
 	private Properties properties 									 = new Properties();
 	private SimpleDateFormat sdf 									 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+	private boolean outputToFailedTopic								 = false;
 	
-	// used for the shutdown hook
 	private static volatile boolean keepRunning = true;
 	
 	public RuleEngineConsumerProducer (String propertiesFileName) throws Exception
@@ -111,6 +111,10 @@ public class RuleEngineConsumerProducer
 			this.ruleEngine.setPreserveRuleExcecutionResults(false);
 		}
 
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED).equals(""))
+		{
+			outputToFailedTopic = true;
+		}
 		Runtime.getRuntime().addShutdownHook(new Thread()
 		{
 		    public void run() {
@@ -251,7 +255,8 @@ public class RuleEngineConsumerProducer
 		try(
 				KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(getConsumerProperties(getProperty(Constants.PROPERTY_KAFKA_BROKERS), getProperty(Constants.PROPERTY_KAFKA_GROUP_ID)));
 				KafkaProducer<String, String>kafkaProducer = new KafkaProducer<>(getProducerProperties(getProperty(Constants.PROPERTY_KAFKA_BROKERS)));
-				KafkaProducer<String, String>kafkaProducerLogging = new KafkaProducer<>(getProducerProperties(getProperty(Constants.PROPERTY_KAFKA_BROKERS)))
+				KafkaProducer<String, String>kafkaProducerLogging = new KafkaProducer<>(getProducerProperties(getProperty(Constants.PROPERTY_KAFKA_BROKERS)));
+				KafkaProducer<String, String>kafkaProducerFailed = new KafkaProducer<>(getProducerProperties(getProperty(Constants.PROPERTY_KAFKA_BROKERS)))
 			)
 		{
 			// subscribe to the given kafka topic
@@ -287,18 +292,37 @@ public class RuleEngineConsumerProducer
 						// format the values from the rowfield collection as json
 						JSONObject jsonMessage = FormatConverter.convertToJson(collection); 
 						
-						// send the resulting data to the output topic
-						sendTargetTopicMessage(kafkaProducerLogging, record.key(), jsonMessage);
+						// if we don't have a topic specified for the failed messages only then all
+						// messages are sent to the target topic
+						if(!outputToFailedTopic)
+						{
+							// send the resulting data to the target topic
+							sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
+						}
+						else
+						{
+							if(ruleEngine.getNumberOfGroupsFailed()==0)
+							{
+								// if no rulegroups failed send message to target topic
+								sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
+							}
+							else
+							{
+								// send the message to the target topic for failed messages
+								sendFailedTargetTopicMessage(kafkaProducerFailed, record.key(), jsonMessage);
+							}
+						}
 
 						// send the rule execution details as message(s) to the logging topic, if one is defined.
 						// if no logging topic is defined, then no execution details will be generated 
 						// as ruleEngine.setPreserveRuleExcecutionResults() is set to "false"
-						if(ruleEngine.getPreserveRuleExcecutionResults()==true)
+						if(ruleEngine.getPreserveRuleExcecutionResults())
 						{
-							sendRuleEngineDetails(kafkaProducer, record.key(), jsonMessage, ruleEngine);
-						}
+							sendLoggingTargetTopicMessage(kafkaProducerLogging, record.key(), jsonMessage, ruleEngine);
 							
-						
+							// clear the collection of details/result
+							ruleEngine.getRuleExecutionCollection().clear();
+						}
 					}
 					// if we have a parsing problem with the JSON message, we continue processing
 					catch(JSONException jex)
@@ -338,7 +362,7 @@ public class RuleEngineConsumerProducer
 	
 		
 	/**
-	 * methods send a message to the relevant kafka target topic.
+	 * method sends a message to the relevant kafka target topic.
 	 * 
 	 * the message will contain the original fields from the source topic, plus the refercence fields 
 	 * that are defined in the ruleengine project file that are not already defined in the message itself.
@@ -358,6 +382,26 @@ public class RuleEngineConsumerProducer
 	}
 
 	/**
+	 * method sends a message for those records that failed the ruleengine logik to the relevant kafka target topic.
+	 * 
+	 * the message will contain the original fields from the source topic, plus the refercence fields 
+	 * that are defined in the ruleengine project file that are not already defined in the message itself.
+	 * 
+	 * For example if the project file contains a reference field "country" which is which is set by an action
+	 * in one of the rulegroups and that field is not already existing in the source topic message, then this
+	 * field will be added to the message of the target topic.
+	 * 
+	 * @param kafkaProducerFailed		the kafka producer to use to send the message
+	 * @param recordKey					the key of the kafka message
+	 * @param message					the message as received from the source topic
+	 */
+	private void sendFailedTargetTopicMessage(KafkaProducer<String, String> kafkaProducerFailed, String recordKey, JSONObject message)
+	{
+		// send the resulting data to the target topic
+		kafkaProducerFailed.send(new ProducerRecord<String, String>(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED),recordKey, message.toString()));
+	}
+
+	/**
 	 * method adds the relevant results from the ruleengine execution to the JSON formatted object (message) and
 	 * submits the message to the kafka topic for logging
 	 * 
@@ -373,7 +417,7 @@ public class RuleEngineConsumerProducer
 	 * @param message			the kafka source message
 	 * @param ruleEngine		reference to the ruleengine instance
 	 */
-	private void sendRuleEngineDetails(KafkaProducer<String, String> kafkaProducer, String recordKey, JSONObject message, BusinessRulesEngine ruleEngine)
+	private void sendLoggingTargetTopicMessage(KafkaProducer<String, String> kafkaProducerLogging, String recordKey, JSONObject message, BusinessRulesEngine ruleEngine)
 	{
 		// loop over all rule groups
 		for(int f=0;f<ruleEngine.getGroups().size();f++)
@@ -401,6 +445,7 @@ public class RuleEngineConsumerProducer
     				long ruleFailed = (long)rule.getFailed();
     				String ruleMessage = result.getMessage();
     				
+    				// add ruleengine fields to the message
     				message.put(Constants.RULEENGINE_FIELD_GROUP_ID, groupId);
     				message.put(Constants.RULEENGINE_FIELD_GROUP_FAILED, groupFailed);
     				message.put(Constants.RULEENGINE_FIELD_SUBGROUP_ID, subgroupId);
@@ -411,7 +456,7 @@ public class RuleEngineConsumerProducer
     				message.put(Constants.RULEENGINE_FIELD_RULE_FAILED, ruleFailed);
     				message.put(Constants.RULEENGINE_FIELD_RULE_MESSAGE, ruleMessage);
     				
-    				kafkaProducer.send(new ProducerRecord<String, String>(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING),recordKey, message.toString()));
+    				kafkaProducerLogging.send(new ProducerRecord<String, String>(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING),recordKey, message.toString()));
                 }
             }
         }

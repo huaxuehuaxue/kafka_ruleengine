@@ -28,4 +28,10 @@ public class Constants
 	public static final String MESSAGE_FORMAT_JSON					= "json";
 	public static final String MESSAGE_FORMAT_AVRO					= "avro";
 	public static final String MESSAGE_FORMAT_CSV					= "csv";
+	
+    public static final int RULEENGINE_OUTPUT_MODE_ALL_GROUPS		= 0;
+    public static final int RULEENGINE_OUTPUT_MODE_PASSED_GROUPS	= 1;
+    public static final int RULEENGINE_OUTPUT_MODE_FAILED_GROUPS	= 2;
+    
+
 }
