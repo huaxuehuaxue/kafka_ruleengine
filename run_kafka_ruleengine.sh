@@ -7,7 +7,7 @@
 # target topic. Additonally a topic may be specified to output the
 # detailed results of the ruleengine execution.
 #
-# last update: uwe.geercken@web.de - 2018-05-28
+# last update: uwe.geercken@web.de - 2018-06-02
 
 
 # path and name of the properties file to use. if undefined use the default name
