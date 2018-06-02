@@ -23,11 +23,12 @@ topic. For each input message and rule one output message to the logging topic i
 10 input messages and 5 rules, then 50 messages are generated to the logging topic.
 
 There are two modes possible with the ruleengine:
-1 Update only mode: Define the output topic, don't define the failed topic. All input messages will be processed.
+
+1) Update only mode: Define the output topic, don't define the failed topic. All input messages will be processed.
 The rule logic will define which records are updated (using actions) and which not. And then all messages are
 sent to the output topic.
 
-2 Check data mode: Define the output topic and define the failed topic. All input messages will be processed.
+2) Check data mode: Define the output topic and define the failed topic. All input messages will be processed.
 A single message will need to pass all rulegroups. If it does, it is sent to the output topic only, if not
 is is sent to the failed topic only. So this mode checks if all logic (based on the rulegroups) that you defined
 is correct for each record. See also the note below.
