@@ -90,6 +90,8 @@ public class RuleEngineConsumerProducer
 	private Properties properties 									 = new Properties();
 	private SimpleDateFormat sdf 									 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 	private boolean outputToFailedTopic								 = false;
+	private int failedMode										 	 = 0;
+	private int failedNumberOfGroups							 	 = 0;
 	
 	private static volatile boolean keepRunning = true;
 	
@@ -109,6 +111,35 @@ public class RuleEngineConsumerProducer
 		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)==null || getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING).equals(""))
 		{
 			this.ruleEngine.setPreserveRuleExcecutionResults(false);
+		}
+		
+		// determine the failed mode. can be "at least one" or "all" rulegroups failed 
+		// has to be according the RULEGROUP_STATUS_MODE... of the ruleengine
+		if(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_MODE)!=null && !getProperty(Constants.PROPERTY_RULEENGINE_FAILED_MODE).equals(""))
+		{
+			try
+			{
+				failedMode = Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_MODE));
+			}
+			catch(Exception ex)
+			{
+			}
+		}
+		
+		// determine the number of groups that must have failed so that
+		// the data is regarded as failed
+		if(failedMode==0)
+		{
+			if(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS)!=null && !getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS).equals(""))
+			{
+				try
+				{
+					failedNumberOfGroups = Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS));
+				}
+				catch(Exception ex)
+				{
+				}
+			}
 		}
 
 		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED).equals(""))
@@ -243,6 +274,7 @@ public class RuleEngineConsumerProducer
 		System.out.println(getSystemMessage(Constants.LEVEL_INFO,"ruleengine project file: " + getProperty(Constants.PROPERTY_RULEENGINE_PROJECT_FILE)));
 		System.out.println(getSystemMessage(Constants.LEVEL_INFO,"ruleengine project reference fields: " + ruleEngine.getReferenceFields().toString()));
 		System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka target topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET)));
+		System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka target topic failed: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)));
 		System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka logging topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)));
 		System.out.println(getSystemMessage(Constants.LEVEL_INFO,""));
 
@@ -301,15 +333,24 @@ public class RuleEngineConsumerProducer
 						}
 						else
 						{
-							if(ruleEngine.getNumberOfGroupsFailed()==0)
-							{
-								// if no rulegroups failed send message to target topic
-								sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
-							}
-							else
+							// depending on the selected mode the ruleengine returns if
+							// this status is true/valid
+							if(failedMode != 0 && ruleEngine.getRuleGroupsStatus(failedMode))
 							{
 								// send the message to the target topic for failed messages
 								sendFailedTargetTopicMessage(kafkaProducerFailed, record.key(), jsonMessage);
+							}
+							// if failedMode is equal to 0, then the user specifies the minimum number
+							// of groups that must have failed to regard the data as failed
+							else if(failedMode == 0 && ruleEngine.getRuleGroupsMinimumNumberFailed(failedNumberOfGroups)) 
+							{
+								// send the message to the target topic for failed messages
+								sendFailedTargetTopicMessage(kafkaProducerFailed, record.key(), jsonMessage);
+							}
+							else
+							{
+								// otherwise send message to target topic
+								sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
 							}
 						}
 
