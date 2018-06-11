@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package com.datamelt.util;
 
 public class PropertiesFileException extends Exception
