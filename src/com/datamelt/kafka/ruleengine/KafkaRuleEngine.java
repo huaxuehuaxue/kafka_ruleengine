@@ -51,7 +51,7 @@ public class KafkaRuleEngine
 	
 	public static void main(String[] args) throws Exception
 	{
-		if(args.length==0)
+		if(args.length==0 || args.length<4)
     	{
     		help();
     	}
@@ -73,58 +73,15 @@ public class KafkaRuleEngine
 			// add properties from the kafka ruleengine properties file
 			kafkaProducerProperties.put(Constants.PROPERTY_KAFKA_BOOTSTRAP_SERVERS, getProperty(Constants.PROPERTY_KAFKA_BROKERS));
 			
-			// get the number of messages the consumer will poll in one go from kafka
-			if(getProperty(Constants.PROPERTY_KAFKA_CONSUMER_POLL)!=null && !getProperty(Constants.PROPERTY_KAFKA_CONSUMER_POLL).equals(""))
-			{
-				try
-				{
-					kafkaConsumerPoll = Long.parseLong(getProperty(Constants.PROPERTY_KAFKA_CONSUMER_POLL));
-				}
-				catch(Exception ex)
-				{
-				}
-			}
-			
-			// determine the failed mode. can be "at least one" or "all" rulegroups failed 
-			// has to be according the RULEGROUP_STATUS_MODE... of the ruleengine
-			if(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_MODE)!=null && !getProperty(Constants.PROPERTY_RULEENGINE_FAILED_MODE).equals(""))
-			{
-				try
-				{
-					failedMode = Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_MODE));
-				}
-				catch(Exception ex)
-				{
-				}
-			}
-			
-			// determine the number of groups that must have failed so that
-			// the data is regarded as failed
-			if(failedMode==0)
-			{
-				if(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS)!=null && !getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS).equals(""))
-				{
-					try
-					{
-						failedNumberOfGroups = Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS));
-					}
-					catch(Exception ex)
-					{
-					}
-				}
-			}
-
-			if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED).equals(""))
-			{
-				outputToFailedTopic = true;
-			}
+			// process properties into variables;
+			processProperties();
 
 			// get a reference to the ruleengine project zip file containing the business rules
-			ZipFile ruleengineProjectZipFile = getRuleEngineProjectZipFile(getProperty(Constants.PROPERTY_RULEENGINE_PROJECT_FILE));
+			ZipFile ruleengineProjectZipFile = getRuleEngineProjectZipFile(args[3]);
 			
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka brokers: " + getProperty(Constants.PROPERTY_KAFKA_BROKERS)));
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka source topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE)));
-			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"ruleengine project file: " + getProperty(Constants.PROPERTY_RULEENGINE_PROJECT_FILE)));
+			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"ruleengine project file: " + args[3]));
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka target topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET)));
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka target topic failed: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)));
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka logging topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)));
@@ -139,7 +96,7 @@ public class KafkaRuleEngine
 				ruleEngineConsumerProducer.setKafkaTopicTarget(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET));
 				ruleEngineConsumerProducer.setKafkaTopicFailed(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED));
 				ruleEngineConsumerProducer.setKafkaTopicLogging(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING));
-				
+
 				ruleEngineConsumerProducer.setFailedMode(failedMode);
 				ruleEngineConsumerProducer.setFailedNumberOfGroups(failedNumberOfGroups);
 				ruleEngineConsumerProducer.setKafkaConsumerPoll(kafkaConsumerPoll);
@@ -183,17 +140,17 @@ public class KafkaRuleEngine
     	System.out.println("results to an Apache kafka target topic. Additionally an optional topic for logging");
     	System.out.println("may be specified which will contain the detailed results of the execution of the ruleengine.");
     	System.out.println();
-    	System.out.println("The Apache Kafka source topic messages must be in JSON format. Output will be also");
-    	System.out.println("in JSON format");
+    	System.out.println("The Apache Kafka source topic messages must be in JSON or CSV format. Output will be in JSON format");
     	System.out.println();
-    	System.out.println("Three properties files must be specified, defining various properties for the program.");
+    	System.out.println("Four files must be specified, defining various properties for the program and the ruleengine project zip file.");
     	System.out.println();
     	System.out.println("RuleEngineConsumerProducer [properties file] [kafka consumer properties file] [kafka producer properties file]");
     	System.out.println("where [properties file]                : required. path and name of the properties file");
     	System.out.println("      [kafka consumer properties file] : required. path and name of the kafka consumer properties file");
     	System.out.println("      [kafka producer properties file] : required. path and name of the kafka producer properties file");
+    	System.out.println("      [rule engine project file]       : required. path and name of the rule engine project file");
     	System.out.println();
-    	System.out.println("example: RuleEngineConsumerProducer /home/test/kafka_ruleengine.properties /home/test/kafka_consumer.properties /home/test/kafka_producer.properties");
+    	System.out.println("example: RuleEngineConsumerProducer /home/test/kafka_ruleengine.properties /home/test/kafka_consumer.properties /home/test/kafka_producer.properties /home/test/my_project_file.zip");
     	System.out.println();
     	System.out.println("published as open source under the Apache License. read the licence notice");
     	System.out.println("all code by uwe geercken, 2006-2018. uwe.geercken@web.de");
@@ -282,6 +239,56 @@ public class KafkaRuleEngine
 	private static String getProperty(String key)
 	{
 		return properties.getProperty(key);
+	}
+	
+	private static void processProperties()
+	{
+		// get the number of messages the consumer will poll in one go from kafka
+		if(getProperty(Constants.PROPERTY_KAFKA_CONSUMER_POLL)!=null && !getProperty(Constants.PROPERTY_KAFKA_CONSUMER_POLL).equals(""))
+		{
+			try
+			{
+				kafkaConsumerPoll = Long.parseLong(getProperty(Constants.PROPERTY_KAFKA_CONSUMER_POLL));
+			}
+			catch(Exception ex)
+			{
+			}
+		}
+		
+		// determine the failed mode. can be "at least one" or "all" rulegroups failed 
+		// has to be according the RULEGROUP_STATUS_MODE... of the ruleengine
+		if(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_MODE)!=null && !getProperty(Constants.PROPERTY_RULEENGINE_FAILED_MODE).equals(""))
+		{
+			try
+			{
+				failedMode = Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_MODE));
+			}
+			catch(Exception ex)
+			{
+			}
+		}
+		
+		// determine the number of groups that must have failed so that
+		// the data is regarded as failed
+		if(failedMode==0)
+		{
+			if(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS)!=null && !getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS).equals(""))
+			{
+				try
+				{
+					failedNumberOfGroups = Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS));
+				}
+				catch(Exception ex)
+				{
+				}
+			}
+		}
+
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED).equals(""))
+		{
+			outputToFailedTopic = true;
+		}
+
 	}
 	
 	/**

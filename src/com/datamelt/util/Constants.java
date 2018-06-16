@@ -29,7 +29,6 @@ public class Constants
 	public static final String PROPERTY_KAFKA_TOPIC_TARGET						= "kafka.topic.target";
 	public static final String PROPERTY_KAFKA_TOPIC_TARGET_FAILED				= "kafka.topic.target.failed";
 	public static final String PROPERTY_KAFKA_TOPIC_TARGET_LOGGING				= "kafka.topic.target.logging";
-	public static final String PROPERTY_RULEENGINE_PROJECT_FILE					= "ruleengine.project.file";
 	public static final String PROPERTY_RULEENGINE_FAILED_MODE					= "ruleengine.failed.mode";
 	public static final String PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS		= "ruleengine.failed.minimum_number_of_groups";
 	public static final String PROPERTY_KAFKA_MESSAGE_FORMAT					= "kafka.topic.source.format";
