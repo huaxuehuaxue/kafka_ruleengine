@@ -156,18 +156,21 @@ public class RuleEngineConsumerProducer implements Runnable
 			// process while we receive messages and if we haven't encountered an exception
 			while (true && keepRunning) 
 	        {
+				//ConsumerRecords<String, String> records = null;
+				// poll records from kafka
+				ConsumerRecords<String, String> records = kafkaConsumer.poll(kafkaConsumerPoll);
+
 				long currentTime = System.currentTimeMillis();
 				long elapsedTime = (currentTime - startTime)/1000;
+				
+				// if the check modified interval has passed, check if the ruleengine project zip
+				// file has changed and if so, reload the file
 				if(elapsedTime > ruleEngineZipFileCheckModifiedInterval)
 				{
 					startTime = currentTime;
 					checkFileChanges();
 				}
 				
-				//ConsumerRecords<String, String> records = null;
-				// poll records from kafka
-				ConsumerRecords<String, String> records = kafkaConsumer.poll(kafkaConsumerPoll);
-
 				// loop over the records/messages
 				for (ConsumerRecord<String, String> record : records) 
 				{
