@@ -28,10 +28,8 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.Properties;
 import java.util.zip.ZipException;
-import java.util.zip.ZipFile;
 
 import com.datamelt.rules.core.ReferenceField;
-import com.datamelt.rules.engine.BusinessRulesEngine;
 import com.datamelt.util.Constants;
 import com.datamelt.util.PropertiesFileException;
 import com.datamelt.util.RowField;
@@ -76,12 +74,14 @@ public class KafkaRuleEngine
 			// process properties into variables;
 			processProperties();
 
-			// get a reference to the ruleengine project zip file containing the business rules
-			ZipFile ruleengineProjectZipFile = getRuleEngineProjectZipFile(args[3]);
+			// check if the zip file is present and accessible
+			checkRuleEngineProjectZipFile(args[3]);
 			
+			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"Start of KafkaRuleEngine program..."));
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka brokers: " + getProperty(Constants.PROPERTY_KAFKA_BROKERS)));
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka source topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE)));
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"ruleengine project file: " + args[3]));
+			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"ruleengine project file check interval (seconds): " + getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL)));
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka target topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET)));
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka target topic failed: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)));
 			System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka logging topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)));
@@ -90,20 +90,21 @@ public class KafkaRuleEngine
 			// create a RuleEngineConsumerProducer instance and run it
 			try
 			{
-				RuleEngineConsumerProducer ruleEngineConsumerProducer = new RuleEngineConsumerProducer(new BusinessRulesEngine(ruleengineProjectZipFile),kafkaConsumerProperties,kafkaProducerProperties);
+				RuleEngineConsumerProducer ruleEngineConsumerProducer = new RuleEngineConsumerProducer(args[3],kafkaConsumerProperties,kafkaProducerProperties);
 				
 				ruleEngineConsumerProducer.setKafkaTopicSource(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE));
 				ruleEngineConsumerProducer.setKafkaTopicTarget(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET));
 				ruleEngineConsumerProducer.setKafkaTopicFailed(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED));
 				ruleEngineConsumerProducer.setKafkaTopicLogging(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING));
-
+				ruleEngineConsumerProducer.setRuleEngineZipFileCheckModifiedInterval(Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL)));
+				
 				ruleEngineConsumerProducer.setFailedMode(failedMode);
 				ruleEngineConsumerProducer.setFailedNumberOfGroups(failedNumberOfGroups);
 				ruleEngineConsumerProducer.setKafkaConsumerPoll(kafkaConsumerPoll);
 				ruleEngineConsumerProducer.setOutputToFailedTopic(outputToFailedTopic);
 				
 				// we do not want to preserve the detailed results of the ruleengine execution
-				// if we are logging the detailed results to a topic
+				// if we are not logging the detailed results to a topic
 				if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)==null || getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING).equals(""))
 				{
 					ruleEngineConsumerProducer.setPreserveRuleExecutionResults(false);
@@ -135,17 +136,18 @@ public class KafkaRuleEngine
 	
 	private static void help()
 	{
-		System.out.println("RuleEngineConsumerProducer. program to process data from an Apache Kafka source topic,");
+		System.out.println("RuleEngineConsumerProducer. Program to process data from an Apache Kafka source topic,");
     	System.out.println("run the business rules from a ruleengine project file against the data and output the");
-    	System.out.println("results to an Apache kafka target topic. Additionally an optional topic for logging");
-    	System.out.println("may be specified which will contain the detailed results of the execution of the ruleengine.");
+    	System.out.println("results to an Apache kafka target topic. Failed rows of data may be output to a different topic.");
+    	System.out.println("Additionally an optional topic for logging may be specified which will contain the detailed");
+    	System.out.println("results of the execution of the ruleengine.");
     	System.out.println();
     	System.out.println("The Apache Kafka source topic messages must be in JSON or CSV format. Output will be in JSON format");
     	System.out.println();
     	System.out.println("Four files must be specified, defining various properties for the program and the ruleengine project zip file.");
     	System.out.println();
-    	System.out.println("RuleEngineConsumerProducer [properties file] [kafka consumer properties file] [kafka producer properties file]");
-    	System.out.println("where [properties file]                : required. path and name of the properties file");
+    	System.out.println("RuleEngineConsumerProducer [ruleengine properties file] [kafka consumer properties file] [kafka producer properties file]");
+    	System.out.println("where [ruleengine properties file]     : required. path and name of the ruleengine properties file");
     	System.out.println("      [kafka consumer properties file] : required. path and name of the kafka consumer properties file");
     	System.out.println("      [kafka producer properties file] : required. path and name of the kafka producer properties file");
     	System.out.println("      [rule engine project file]       : required. path and name of the rule engine project file");
@@ -153,6 +155,7 @@ public class KafkaRuleEngine
     	System.out.println("example: RuleEngineConsumerProducer /home/test/kafka_ruleengine.properties /home/test/kafka_consumer.properties /home/test/kafka_producer.properties /home/test/my_project_file.zip");
     	System.out.println();
     	System.out.println("published as open source under the Apache License. read the licence notice");
+    	System.out.println("check https://github.com/uwegeercken for source code, documentation and samples.");
     	System.out.println("all code by uwe geercken, 2006-2018. uwe.geercken@web.de");
     	System.out.println();
 	}
@@ -182,7 +185,7 @@ public class KafkaRuleEngine
     	return properties;
     }
 	
-	private static ZipFile getRuleEngineProjectZipFile(String filename) throws FileNotFoundException,IOException,ZipException
+	private static void checkRuleEngineProjectZipFile(String filename) throws FileNotFoundException,IOException,ZipException
     {
     	File ruleengineFile = new File(filename);
 		
@@ -197,11 +200,6 @@ public class KafkaRuleEngine
     	else if(!ruleengineFile.isFile())
     	{
     		throw new FileNotFoundException(getSystemMessage(Constants.LEVEL_ERROR,"ruleengine project zip file is not a file: [" + filename + "]"));
-    	}
-    	else
-    	{
-    		ZipFile zipFile = new ZipFile(ruleengineFile);	
-    		return zipFile;
     	}
     }
 	
@@ -288,7 +286,6 @@ public class KafkaRuleEngine
 		{
 			outputToFailedTopic = true;
 		}
-
 	}
 	
 	/**
@@ -312,7 +309,7 @@ public class KafkaRuleEngine
 	}
 	
 	/**
-	 * Returns the label used by the rulengine for each record.
+	 * Returns the label used by the ruleengine for each record.
 	 * 
 	 * @param recordKey		key of the kafka message
 	 * @param counter		the current counter for the number of messages retrieved

@@ -31,6 +31,7 @@ public class Constants
 	public static final String PROPERTY_KAFKA_TOPIC_TARGET_LOGGING				= "kafka.topic.target.logging";
 	public static final String PROPERTY_RULEENGINE_FAILED_MODE					= "ruleengine.failed.mode";
 	public static final String PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS		= "ruleengine.failed.minimum_number_of_groups";
+	public static final String PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL		= "ruleengine.check.modified.file.interval";
 	public static final String PROPERTY_KAFKA_MESSAGE_FORMAT					= "kafka.topic.source.format";
 	public static final String PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_FIELDS	= "kafka.topic.source.format.csv.fields";
 	public static final String PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_SEPARATOR	= "kafka.topic.source.format.csv.value.separator";

@@ -19,9 +19,18 @@
 
 package com.datamelt.kafka.ruleengine;
 
+import java.io.File;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Properties;
+import java.util.zip.ZipFile;
 
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -47,11 +56,11 @@ import com.datamelt.util.RowFieldCollection;
  * Optionally the detailed results of the execution of the ruleengine may be ouput to a defined
  * topic for logging purposes. In this case the topic will contain one output message for each
  * input message and rule. E.g. if there are 10 rules in the ruleengine project file, then for any
- * received input message, 10 ouput messages are generated.
+ * received input message, 10 output messages are generated.
  * 
  * The source topic data is expected to be in JSON format. Output will be in JSON format.
  * 
- * @author uwe geercken - 2018-06-10
+ * @author uwe geercken - 2018-06-26
  *
  */
 public class RuleEngineConsumerProducer implements Runnable
@@ -71,15 +80,31 @@ public class RuleEngineConsumerProducer implements Runnable
 	private String kafkaTopicTarget;
 	private String kafkaTopicLogging;
 	private String kafkaTopicFailed;
+	private String ruleEngineZipFile;
+	private String ruleEngineZipFileWithoutPath;
+	private int ruleEngineZipFileCheckModifiedInterval = 60; //Default
+	
+	private WatchService watcher = FileSystems.getDefault().newWatchService();
+	private WatchKey key;
 	
 	private static volatile boolean keepRunning 					 = true;
 	
-	public RuleEngineConsumerProducer (BusinessRulesEngine ruleEngine, Properties kafkaConsumerProperties, Properties kafkaProducerProperties) throws Exception
+	public RuleEngineConsumerProducer (String ruleEngineZipFile, Properties kafkaConsumerProperties, Properties kafkaProducerProperties) throws Exception
 	{
 		this.kafkaConsumerProperties = kafkaConsumerProperties;
 		this.kafkaProducerProperties = kafkaProducerProperties;
+		this.ruleEngineZipFile = ruleEngineZipFile;
 		
-		this.ruleEngine = ruleEngine;
+		File ruleEngineProjectFile = new File(ruleEngineZipFile);
+		Path p = Paths.get(ruleEngineZipFile);
+		Path ruleEngineZipFilePath = p.getParent();
+		this.ruleEngineZipFileWithoutPath = p.getFileName().toString();
+		
+		// instantiate the ruleengine with the project zip file
+		this.ruleEngine = new BusinessRulesEngine(new ZipFile(ruleEngineProjectFile));
+
+		// register watcher for changed or deleted project zip file
+		key = ruleEngineZipFilePath.register(watcher, StandardWatchEventKinds.ENTRY_MODIFY,StandardWatchEventKinds.ENTRY_DELETE);
 		
 		Runtime.getRuntime().addShutdownHook(new Thread()
 		{
@@ -99,19 +124,25 @@ public class RuleEngineConsumerProducer implements Runnable
 	
 	/**
 	 * runs the RuleEngineConsumerProducer program. Messages are read from an input topic, processed using the ruleengine
-	 * and are output to the target topic.
+	 * and are output to the target topic(s).
 	 * 
+	 * There is always a minimum of one input topic and one output topic. there can be up to three output topics:
+	 * - output of messages of the input topic after the business logic was applied
+	 * - output of those messages that failed the business logic to a different topic
+	 * - output of the detailed results of the business logic to a different topic
 	 */
 	public void run()
 	{
 		// used for counting the number of messages/records.
 		// if no key is defined in the kafka message, then this value is used
-		// as the label during the ruleengine execution 
+		// as the label for each row during the ruleengine execution 
 		long counter = 0;
+		
+		long startTime = System.currentTimeMillis();
         
 		ruleEngine.setPreserveRuleExcecutionResults(preserveRuleExecutionResults);
 		
-		// create a consumer for the source topic
+		// create consumer and producers for the source topic
 		try(
 				KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(kafkaConsumerProperties);
 				KafkaProducer<String, String> kafkaProducer = new KafkaProducer<>(kafkaProducerProperties);
@@ -125,6 +156,14 @@ public class RuleEngineConsumerProducer implements Runnable
 			// process while we receive messages and if we haven't encountered an exception
 			while (true && keepRunning) 
 	        {
+				long currentTime = System.currentTimeMillis();
+				long elapsedTime = (currentTime - startTime)/1000;
+				if(elapsedTime > ruleEngineZipFileCheckModifiedInterval)
+				{
+					startTime = currentTime;
+					checkFileChanges();
+				}
+				
 				//ConsumerRecords<String, String> records = null;
 				// poll records from kafka
 				ConsumerRecords<String, String> records = kafkaConsumer.poll(kafkaConsumerPoll);
@@ -147,11 +186,11 @@ public class RuleEngineConsumerProducer implements Runnable
 						}
 						
 						// add fields that have been additionally defined in the ruleengine project file
-						// these are fields that are not present in the message but used by the rule engine.
+						// these are fields that are not present in the message but used by the rule engine
 						KafkaRuleEngine.addReferenceFields(ruleEngine.getReferenceFields(), collection);
 					
 						// label for the ruleengine. used for assigning a unique label to each record
-						// this is useful when outputting the results.
+						// this is useful when outputting the detailed results.
 						String label = KafkaRuleEngine.getLabel(record.key(), counter);
 						
 						// run the ruleengine
@@ -285,7 +324,7 @@ public class RuleEngineConsumerProducer implements Runnable
         		RuleSubGroup subgroup = group.getSubGroups().get(g);
         		// get the ruleengine execution results of the subgroup
         		ArrayList <RuleExecutionResult> results = subgroup.getExecutionCollection().getResults();
-        		// loop over all results
+        		// loop over all results of each subgroup
         		for (int h= 0;h< results.size();h++)
                 {
         			RuleExecutionResult result = results.get(h);
@@ -377,7 +416,7 @@ public class RuleEngineConsumerProducer implements Runnable
 	{
 		this.kafkaTopicSource = kafkaTopicSource;
 	}
-
+	
 	public String getKafkaTopicTarget()
 	{
 		return kafkaTopicTarget;
@@ -436,6 +475,74 @@ public class RuleEngineConsumerProducer implements Runnable
 	public void setKafkaTopicSourceFormatCsvSeparator(String kafkaTopicSourceFormatCsvSeparator)
 	{
 		this.kafkaTopicSourceFormatCsvSeparator = kafkaTopicSourceFormatCsvSeparator;
+	}
+
+	private void checkFileChanges()
+	{
+		// loop over watch events for the given key
+		for (WatchEvent<?> event: key.pollEvents())
+		{
+	        WatchEvent.Kind<?> kind = event.kind();
+
+	        // ignore overflow events
+	        if (kind == StandardWatchEventKinds.OVERFLOW) 
+	        {
+	            continue;
+	        }
+
+	        @SuppressWarnings("unchecked")
+			WatchEvent<Path> ev = (WatchEvent<Path>)event;
+
+	        // get the filename of the event
+	        Path filename = ev.context();
+	        String eventFilename = filename.getFileName().toString();
+
+	        if(event.kind().equals(StandardWatchEventKinds.ENTRY_DELETE))
+	        {
+	        	System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "the ruleengine project zip file: [" + filename.getFileName() + "] has been deleted"));	        
+	        }
+	        else
+	        {
+		        // if the modified file is the project zip file, we want to reload the file
+		        if(eventFilename.equals(ruleEngineZipFileWithoutPath))
+		        {
+		        	System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_INFO, "detected changed ruleengine project file: [" + filename.getFileName() + "]"));
+		        	try
+		        	{
+		        		// reload the ruleengine project zip file. in case it failes, the exisitng file will remain in use
+		        		BusinessRulesEngine ruleEngineChanged = new BusinessRulesEngine(new ZipFile(new File(ruleEngineZipFile)));
+		        		ruleEngine = null;
+		        		ruleEngine = ruleEngineChanged;
+		        		System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_INFO, "reloaded ruleengine project file: [" + filename.getFileName() + "]"));
+		        	}
+		        	catch(Exception ex)
+		        	{
+		        		System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "could not process changed ruleengine project file: [" + filename.getFileName() + "] - using the previously processed file"));
+		        	}
+		        }
+	        }
+	    }
+
+	    // Reset the key -- this step is critical if you want to receive further watch events.
+		// If the key is no longer valid, the directory is inaccessible so exit the loop.
+	    try
+	    {
+	    	key.reset();
+	    }
+	    catch(Exception ex)
+	    {
+	    	System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "error resetting the watch file key on folder: [" + ruleEngineZipFileWithoutPath + "]"));
+	    }
+	}
+
+	public int getRuleEngineZipFileCheckModifiedInterval()
+	{
+		return ruleEngineZipFileCheckModifiedInterval;
+	}
+
+	public void setRuleEngineZipFileCheckModifiedInterval(int ruleEngineZipFileCheckModifiedInterval)
+	{
+		this.ruleEngineZipFileCheckModifiedInterval = ruleEngineZipFileCheckModifiedInterval;
 	}
 	
 }
