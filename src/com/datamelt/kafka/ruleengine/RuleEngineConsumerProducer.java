@@ -65,7 +65,6 @@ import com.datamelt.util.RowFieldCollection;
  */
 public class RuleEngineConsumerProducer implements Runnable
 {
-	private BusinessRulesEngine ruleEngine;
 	private Properties kafkaConsumerProperties						 = new Properties();
 	private Properties kafkaProducerProperties						 = new Properties();
 	private boolean outputToFailedTopic								 = false; //default
@@ -95,14 +94,11 @@ public class RuleEngineConsumerProducer implements Runnable
 		this.kafkaProducerProperties = kafkaProducerProperties;
 		this.ruleEngineZipFile = ruleEngineZipFile;
 		
-		File ruleEngineProjectFile = new File(ruleEngineZipFile);
+		
 		Path p = Paths.get(ruleEngineZipFile);
 		Path ruleEngineZipFilePath = p.getParent();
 		this.ruleEngineZipFileWithoutPath = p.getFileName().toString();
 		
-		// instantiate the ruleengine with the project zip file
-		this.ruleEngine = new BusinessRulesEngine(new ZipFile(ruleEngineProjectFile));
-
 		// register watcher for changed or deleted project zip file
 		key = ruleEngineZipFilePath.register(watcher, StandardWatchEventKinds.ENTRY_MODIFY,StandardWatchEventKinds.ENTRY_DELETE);
 		
@@ -131,17 +127,35 @@ public class RuleEngineConsumerProducer implements Runnable
 	 * - output of those messages that failed the business logic to a different topic
 	 * - output of the detailed results of the business logic to a different topic
 	 */
-	public void run()
+	public synchronized void run()
 	{
 		// used for counting the number of messages/records.
 		// if no key is defined in the kafka message, then this value is used
 		// as the label for each row during the ruleengine execution 
 		long counter = 0;
 		
+		// used for calculating the elapsedtime which is used for reloading 
+		// the ruleengine project zip file if it has changed
 		long startTime = System.currentTimeMillis();
-        
-		ruleEngine.setPreserveRuleExcecutionResults(preserveRuleExecutionResults);
+
+		File ruleEngineProjectFile = new File(ruleEngineZipFile);
 		
+		BusinessRulesEngine ruleEngine = null;
+		try
+		{
+			// instantiate the ruleengine with the project zip file
+			ruleEngine = new BusinessRulesEngine(new ZipFile(ruleEngineProjectFile));
+
+			// preserve rule execution results or not
+			ruleEngine.setPreserveRuleExcecutionResults(preserveRuleExecutionResults);
+		}
+		catch(Exception ex)
+		{
+			System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_INFO, "error processing the ruleengine project file: [" + ruleEngineProjectFile + "]"));
+			// we do not want to start reading data, if the ruleengine produced an exception
+			keepRunning=false;
+			
+		}
 		// create consumer and producers for the source topic
 		try(
 				KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(kafkaConsumerProperties);
@@ -153,106 +167,132 @@ public class RuleEngineConsumerProducer implements Runnable
 			// subscribe to the given kafka topic
 			kafkaConsumer.subscribe(Arrays.asList(kafkaTopicSource));
 			
+			boolean errorReloadingProjectZipFile = false;
+			
 			// process while we receive messages and if we haven't encountered an exception
 			while (true && keepRunning) 
 	        {
-				//ConsumerRecords<String, String> records = null;
-				// poll records from kafka
-				ConsumerRecords<String, String> records = kafkaConsumer.poll(kafkaConsumerPoll);
-
 				long currentTime = System.currentTimeMillis();
 				long elapsedTime = (currentTime - startTime)/1000;
+
+				ConsumerRecords<String, String> records = null;
 				
 				// if the check modified interval has passed, check if the ruleengine project zip
 				// file has changed and if so, reload the file
-				if(elapsedTime > ruleEngineZipFileCheckModifiedInterval)
+				if(elapsedTime >= ruleEngineZipFileCheckModifiedInterval)
 				{
 					startTime = currentTime;
-					checkFileChanges();
+					boolean reload = checkFileChanges();
+					if(reload)
+					{
+			        	synchronized(ruleEngine)
+			        	{
+							try
+				        	{
+				        		// reload the ruleengine project zip file
+								ruleEngine.reloadZipFile(new ZipFile(new File(ruleEngineZipFile)));
+								errorReloadingProjectZipFile = false;
+				        		System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_INFO, "reloaded ruleengine project file: [" + ruleEngineZipFile + "]"));
+				        	}
+				        	catch(Exception ex)
+				        	{
+				        		errorReloadingProjectZipFile = true;
+				        		System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "could not process changed ruleengine project file: [" + ruleEngineZipFile + "]"));
+				        		System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_WARNING, "no further data will be processed, until a valid ruleengine project zip file is available"));
+				        	}
+			        	}
+					}
 				}
 				
-				// loop over the records/messages
-				for (ConsumerRecord<String, String> record : records) 
+				// only process data if the ruleengine project zip file was correctly processed
+				if(!errorReloadingProjectZipFile)
 				{
-					counter++;
-					try
-					{
-						// create a collection of fields from the incoming record
-						RowFieldCollection collection = null;
-						if(kafkaTopicSourceFormat.equals(Constants.MESSAGE_FORMAT_JSON))
-						{
-							collection = FormatConverter.convertFromJson(record.value());
-						}
-						else if(kafkaTopicSourceFormat.equals(Constants.MESSAGE_FORMAT_CSV))
-						{
-							collection = FormatConverter.convertFromCsv(record.value(),kafkaTopicSourceFormatCsvFields,kafkaTopicSourceFormatCsvSeparator);
-						}
-						
-						// add fields that have been additionally defined in the ruleengine project file
-						// these are fields that are not present in the message but used by the rule engine
-						KafkaRuleEngine.addReferenceFields(ruleEngine.getReferenceFields(), collection);
+					// poll records from kafka
+					records = kafkaConsumer.poll(kafkaConsumerPoll);
 					
-						// label for the ruleengine. used for assigning a unique label to each record
-						// this is useful when outputting the detailed results.
-						String label = KafkaRuleEngine.getLabel(record.key(), counter);
-						
-						// run the ruleengine
-						ruleEngine.run(label, collection);
-
-						// format the values from the rowfield collection as json
-						JSONObject jsonMessage = FormatConverter.convertToJson(collection); 
-						
-						// if we don't have a topic specified for the failed messages, then all
-						// messages are sent to the target topic
-						if(!outputToFailedTopic)
+					// loop over the records/messages
+					for (ConsumerRecord<String, String> record : records) 
+					{
+						counter++;
+						try
 						{
-							// send the resulting data to the target topic
-							sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
-						}
-						else
-						{
-							// depending on the selected mode the ruleengine returns if
-							// this status is true/valid
-							if(failedMode != 0 && ruleEngine.getRuleGroupsStatus(failedMode))
+							// create a collection of fields from the incoming record
+							RowFieldCollection collection = null;
+							if(kafkaTopicSourceFormat.equals(Constants.MESSAGE_FORMAT_JSON))
 							{
-								// send the message to the target topic for failed messages
-								sendFailedTargetTopicMessage(kafkaProducerFailed, record.key(), jsonMessage);
+								collection = FormatConverter.convertFromJson(record.value());
 							}
-							// if failedMode is equal to 0, then the user specifies the minimum number
-							// of groups that must have failed to regard the data as failed
-							else if(failedMode == 0 && ruleEngine.getRuleGroupsMinimumNumberFailed(failedNumberOfGroups)) 
+							else if(kafkaTopicSourceFormat.equals(Constants.MESSAGE_FORMAT_CSV))
 							{
-								// send the message to the target topic for failed messages
-								sendFailedTargetTopicMessage(kafkaProducerFailed, record.key(), jsonMessage);
+								collection = FormatConverter.convertFromCsv(record.value(),kafkaTopicSourceFormatCsvFields,kafkaTopicSourceFormatCsvSeparator);
+							}
+							
+							// add fields that have been additionally defined in the ruleengine project file
+							// these are fields that are not present in the message but used by the rule engine
+							KafkaRuleEngine.addReferenceFields(ruleEngine.getReferenceFields(), collection);
+						
+							// label for the ruleengine. used for assigning a unique label to each record
+							// this is useful when outputting the detailed results.
+							String label = KafkaRuleEngine.getLabel(record.key(), counter);
+							
+							// run the ruleengine
+							ruleEngine.run(label, collection);
+	
+							// format the values from the rowfield collection as json
+							JSONObject jsonMessage = FormatConverter.convertToJson(collection); 
+							
+							// if we don't have a topic specified for the failed messages, then all
+							// messages are sent to the target topic
+							if(!outputToFailedTopic)
+							{
+								// send the resulting data to the target topic
+								sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
 							}
 							else
 							{
-								// otherwise send message to target topic
-								sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
+								// depending on the selected mode the ruleengine returns if
+								// this status is true/valid
+								if(failedMode != 0 && ruleEngine.getRuleGroupsStatus(failedMode))
+								{
+									// send the message to the target topic for failed messages
+									sendFailedTargetTopicMessage(kafkaProducerFailed, record.key(), jsonMessage);
+								}
+								// if failedMode is equal to 0, then the user specifies the minimum number
+								// of groups that must have failed to regard the data as failed
+								else if(failedMode == 0 && ruleEngine.getRuleGroupsMinimumNumberFailed(failedNumberOfGroups)) 
+								{
+									// send the message to the target topic for failed messages
+									sendFailedTargetTopicMessage(kafkaProducerFailed, record.key(), jsonMessage);
+								}
+								else
+								{
+									// otherwise send message to target topic
+									sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
+								}
+							}
+	
+							// send the rule execution details as message(s) to the logging topic, if one is defined.
+							// if no logging topic is defined, then no execution details will be generated 
+							// as ruleEngine.setPreserveRuleExcecutionResults() is set to "false"
+							if(ruleEngine.getPreserveRuleExcecutionResults())
+							{
+								sendLoggingTargetTopicMessage(kafkaProducerLogging, record.key(), jsonMessage, ruleEngine);
+								
+								// clear the collection of details/result
+								ruleEngine.getRuleExecutionCollection().clear();
 							}
 						}
-
-						// send the rule execution details as message(s) to the logging topic, if one is defined.
-						// if no logging topic is defined, then no execution details will be generated 
-						// as ruleEngine.setPreserveRuleExcecutionResults() is set to "false"
-						if(ruleEngine.getPreserveRuleExcecutionResults())
+						// if we have a parsing problem with the JSON message, we continue processing
+						catch(JSONException jex)
 						{
-							sendLoggingTargetTopicMessage(kafkaProducerLogging, record.key(), jsonMessage, ruleEngine);
-							
-							// clear the collection of details/result
-							ruleEngine.getRuleExecutionCollection().clear();
+							System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "error parsing message: [" + record.value() + "]"));
 						}
-					}
-					// if we have a parsing problem with the JSON message, we continue processing
-					catch(JSONException jex)
-					{
-						System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "error parsing message: [" + record.value() + "]"));
-					}
-					// if we have any other exception we shutdown
-					catch(Exception ex)
-					{
-						ex.printStackTrace();
-						keepRunning=false;
+						// if we have any other exception we shutdown
+						catch(Exception ex)
+						{
+							ex.printStackTrace();
+							keepRunning=false;
+						}
 					}
 				}
 			}
@@ -480,7 +520,7 @@ public class RuleEngineConsumerProducer implements Runnable
 		this.kafkaTopicSourceFormatCsvSeparator = kafkaTopicSourceFormatCsvSeparator;
 	}
 
-	private void checkFileChanges()
+	private synchronized boolean checkFileChanges()
 	{
 		// loop over watch events for the given key
 		for (WatchEvent<?> event: key.pollEvents())
@@ -510,18 +550,7 @@ public class RuleEngineConsumerProducer implements Runnable
 		        if(eventFilename.equals(ruleEngineZipFileWithoutPath))
 		        {
 		        	System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_INFO, "detected changed ruleengine project file: [" + filename.getFileName() + "]"));
-		        	try
-		        	{
-		        		// reload the ruleengine project zip file. in case it failes, the exisitng file will remain in use
-		        		BusinessRulesEngine ruleEngineChanged = new BusinessRulesEngine(new ZipFile(new File(ruleEngineZipFile)));
-		        		ruleEngine = null;
-		        		ruleEngine = ruleEngineChanged;
-		        		System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_INFO, "reloaded ruleengine project file: [" + filename.getFileName() + "]"));
-		        	}
-		        	catch(Exception ex)
-		        	{
-		        		System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "could not process changed ruleengine project file: [" + filename.getFileName() + "] - using the previously processed file"));
-		        	}
+		        	return true;
 		        }
 	        }
 	    }
@@ -536,6 +565,7 @@ public class RuleEngineConsumerProducer implements Runnable
 	    {
 	    	System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "error resetting the watch file key on folder: [" + ruleEngineZipFileWithoutPath + "]"));
 	    }
+	    return false;
 	}
 
 	public int getRuleEngineZipFileCheckModifiedInterval()
