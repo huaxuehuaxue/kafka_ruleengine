@@ -81,7 +81,7 @@ public class RuleEngineConsumerProducer implements Runnable
 	private String kafkaTopicFailed;
 	private String ruleEngineZipFile;
 	private String ruleEngineZipFileWithoutPath;
-	private int ruleEngineZipFileCheckModifiedInterval = 60; //Default
+	private int ruleEngineZipFileCheckModifiedInterval 				= 60; //Default
 	
 	private WatchService watcher = FileSystems.getDefault().newWatchService();
 	private WatchKey key;
@@ -93,7 +93,6 @@ public class RuleEngineConsumerProducer implements Runnable
 		this.kafkaConsumerProperties = kafkaConsumerProperties;
 		this.kafkaProducerProperties = kafkaProducerProperties;
 		this.ruleEngineZipFile = ruleEngineZipFile;
-		
 		
 		Path p = Paths.get(ruleEngineZipFile);
 		Path ruleEngineZipFilePath = p.getParent();
@@ -156,6 +155,7 @@ public class RuleEngineConsumerProducer implements Runnable
 			keepRunning=false;
 			
 		}
+		
 		// create consumer and producers for the source topic
 		try(
 				KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(kafkaConsumerProperties);
