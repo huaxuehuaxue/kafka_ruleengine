@@ -21,6 +21,7 @@ package com.datamelt.util;
 
 public class Constants
 {
+	// properties of the ruleengine properties file
 	public static final String PROPERTY_KAFKA_BROKERS							= "kafka.brokers";
 	public static final String PROPERTY_KAFKA_GROUP_ID							= "kafka.group.id";
 	public static final String PROPERTY_KAFKA_CONSUMER_POLL						= "kafka.consumer.poll";
@@ -42,27 +43,42 @@ public class Constants
 	public static final String PROPERTY_KAFKA_BOOTSTRAP_SERVERS					= "bootstrap.servers";
 	public static final String PROPERTY_KAFKA_CONSUMER_GROUP_ID					= "group.id";
 	
-	public static final String RULEENGINE_FIELD_GROUP_ID					= "ruleengine_group";
-	public static final String RULEENGINE_FIELD_GROUP_FAILED				= "ruleengine_group_failed";
-	public static final String RULEENGINE_FIELD_SUBGROUP_ID					= "ruleengine_subgroup";
-	public static final String RULEENGINE_FIELD_SUBGROUP_FAILED				= "ruleengine_subgroup_failed";
-	public static final String RULEENGINE_FIELD_SUBGROUP_OPERATOR			= "ruleengine_subgroup_operator";
-	public static final String RULEENGINE_FIELD_RULES_OPERATOR				= "ruleengine_rules_operator";
-	public static final String RULEENGINE_FIELD_RULE_ID						= "ruleengine_rule";
-	public static final String RULEENGINE_FIELD_RULE_FAILED					= "ruleengine_rule_failed";
-	public static final String RULEENGINE_FIELD_RULE_MESSAGE				= "ruleengine_rule_message";
+	// ruleengine fields that will be added to the output
+	public static final String RULEENGINE_FIELD_GROUP_ID						= "ruleengine_group";
+	public static final String RULEENGINE_FIELD_GROUP_FAILED					= "ruleengine_group_failed";
+	public static final String RULEENGINE_FIELD_SUBGROUP_ID						= "ruleengine_subgroup";
+	public static final String RULEENGINE_FIELD_SUBGROUP_FAILED					= "ruleengine_subgroup_failed";
+	public static final String RULEENGINE_FIELD_SUBGROUP_OPERATOR				= "ruleengine_subgroup_operator";
+	public static final String RULEENGINE_FIELD_RULES_OPERATOR					= "ruleengine_rules_operator";
+	public static final String RULEENGINE_FIELD_RULE_ID							= "ruleengine_rule";
+	public static final String RULEENGINE_FIELD_RULE_FAILED						= "ruleengine_rule_failed";
+	public static final String RULEENGINE_FIELD_RULE_MESSAGE					= "ruleengine_rule_message";
 	
-	public static final String LEVEL_INFO									= "INFO";
-	public static final String LEVEL_WARNING								= "WARNING";
-	public static final String LEVEL_ERROR									= "ERROR";
+	// for checking broker availability
+	public static final int ADMIN_CLIENT_TIMEOUT_MS 							= 5000;
 	
-	public static final String MESSAGE_FORMAT_JSON							= "json";
-	public static final String MESSAGE_FORMAT_AVRO							= "avro";
-	public static final String MESSAGE_FORMAT_CSV							= "csv";
+	// standrad datetime format for loggin
+	public static final String DATETIME_FORMAT									= "yyyy-MM-dd HH:mm:ss";
+
+	// log levels
+	// Note: LOG_LEVEL_ALL will always be output
+	public static final int LOG_LEVEL_ALL										= 0;
+	public static final int LOG_LEVEL_ERROR								   		= 1;
+	public static final int LOG_LEVEL_WARNING									= 2;
+	public static final int LOG_LEVEL_INFO										= 3;
+	public static final int LOG_LEVEL_DETAILED									= 4;
 	
-    public static final int RULEENGINE_OUTPUT_MODE_ALL_GROUPS				= 0;
-    public static final int RULEENGINE_OUTPUT_MODE_PASSED_GROUPS			= 1;
-    public static final int RULEENGINE_OUTPUT_MODE_FAILED_GROUPS			= 2;
-    
+	// names of log levels for log output
+	public static final String[] LOG_LEVEL_NAMES								= {"ALL     :", "ERROR   :", "WARNING :", "INFO    :", "DETAILED:"};
+	
+	// format of the kafka messages
+	public static final String MESSAGE_FORMAT_JSON								= "json";
+	public static final String MESSAGE_FORMAT_AVRO								= "avro";
+	public static final String MESSAGE_FORMAT_CSV								= "csv";
+	
+	// ruleengine output mode
+    public static final int RULEENGINE_OUTPUT_MODE_ALL_GROUPS					= 0;
+    public static final int RULEENGINE_OUTPUT_MODE_PASSED_GROUPS				= 1;
+    public static final int RULEENGINE_OUTPUT_MODE_FAILED_GROUPS				= 2;
 
 }

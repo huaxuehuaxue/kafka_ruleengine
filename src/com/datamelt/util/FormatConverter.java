@@ -25,7 +25,7 @@ import org.json.JSONObject;
  * Formats RowFieldCollection to JSON or vice versa.
  * 
  * 
- * @author uwe.geercken@web.de - 2018-06-11
+ * @author uwe.geercken@web.de - 2018-08-05
  *
  */
 public class FormatConverter
@@ -90,5 +90,4 @@ public class FormatConverter
 		return new RowFieldCollection(fieldNames,fields);  
 
 	}
-	
 }

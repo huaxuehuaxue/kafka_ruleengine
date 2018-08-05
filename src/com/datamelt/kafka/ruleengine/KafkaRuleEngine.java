@@ -21,20 +21,16 @@ package com.datamelt.kafka.ruleengine;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Properties;
-import java.util.zip.ZipException;
 
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.ListTopicsOptions;
 
 import com.datamelt.rules.core.ReferenceField;
 import com.datamelt.util.Constants;
-import com.datamelt.util.PropertiesFileException;
 import com.datamelt.util.RowField;
 import com.datamelt.util.RowFieldCollection;
 
@@ -42,25 +38,28 @@ public class KafkaRuleEngine
 {
 	private static ArrayList<RowField> ruleEngineProjectFileReferenceFields  = new ArrayList<RowField>();
 	private static Properties properties 									 = new Properties();
+	private static String propertiesFilename;
 	private static Properties kafkaConsumerProperties						 = new Properties();
 	private static Properties kafkaProducerProperties						 = new Properties();
-	private static SimpleDateFormat sdf 							 		 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+	private static SimpleDateFormat sdf 							 		 = new SimpleDateFormat(Constants.DATETIME_FORMAT);
 	private static boolean outputToFailedTopic								 = false;
 	private static int failedMode										 	 = 0;
 	private static int failedNumberOfGroups							 	 	 = 0;
 	private static long kafkaConsumerPoll									 = 100;
-	private static final int ADMIN_CLIENT_TIMEOUT_MS 						 = 5000;
+	
+	private static int logLevel												 = Constants.LOG_LEVEL_INFO;
 	
 	public static void main(String[] args) throws Exception
 	{
-		if(args.length==0 || args.length<4)
+		if(args.length==0 || args.length<5)
     	{
     		help();
     	}
 		else
 		{
 			// load kafka ruleengine properties file
-			properties = loadProperties(args[0]);
+			propertiesFilename = args[0];
+			properties = loadProperties(propertiesFilename);
 			
 			// load kafka consumer properties file
 			kafkaConsumerProperties = loadProperties(args[1]);
@@ -78,96 +77,125 @@ public class KafkaRuleEngine
 			// process properties into variables;
 			processProperties();
 
-			// check if we can get a list of topics from the brokers using the AdminClient
-			// if not, then the brokers are probably not available
-			boolean kafkaBrokersAvailable = brokersAvailable();
-			if(kafkaBrokersAvailable)
+			// if the user specified a log level
+			if(args.length==5 && args[4]!=null)
 			{
-				// check if the zip file is present and accessible
-				checkRuleEngineProjectZipFile(args[3]);
-				
-				System.out.println(getSystemMessage(Constants.LEVEL_INFO,"Start of KafkaRuleEngine program..."));
-				System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka brokers: " + getProperty(Constants.PROPERTY_KAFKA_BROKERS)));
-				System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka source topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE)));
-				System.out.println(getSystemMessage(Constants.LEVEL_INFO,"ruleengine project file: " + args[3]));
-				System.out.println(getSystemMessage(Constants.LEVEL_INFO,"ruleengine project file check interval (seconds): " + getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL)));
-				System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka target topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET)));
-				System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka target topic failed: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)));
-				System.out.println(getSystemMessage(Constants.LEVEL_INFO,"kafka logging topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)));
-				System.out.println(getSystemMessage(Constants.LEVEL_INFO,""));
-				
-				// create a RuleEngineConsumerProducer instance and run it
-				try
+				logLevel = Integer.parseInt(args[4]);
+			}
+			
+			// check if the zip file is present and accessible
+			boolean zipFileOk = ruleEngineProjectZipFileOk(args[3]);
+			if(zipFileOk)
+			{
+				// check if we can get a list of topics from the brokers using the AdminClient
+				// if not, then the brokers are probably not available
+				boolean kafkaBrokersAvailable = brokersAvailable();
+				if(kafkaBrokersAvailable)
 				{
-					RuleEngineConsumerProducer ruleEngineConsumerProducer = new RuleEngineConsumerProducer(args[3],kafkaConsumerProperties,kafkaProducerProperties);
+					log(Constants.LOG_LEVEL_ALL, "Start of KafkaRuleEngine program...");
+					log(Constants.LOG_LEVEL_ALL, "kafka brokers: " + getProperty(Constants.PROPERTY_KAFKA_BROKERS));
+					log(Constants.LOG_LEVEL_ALL, "kafka source topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE));
+					log(Constants.LOG_LEVEL_ALL, "ruleengine project file: " + args[3]);
+					log(Constants.LOG_LEVEL_ALL, "ruleengine project file check interval (seconds): " + getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL));
+					log(Constants.LOG_LEVEL_ALL, "kafka target topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET));
+					log(Constants.LOG_LEVEL_ALL, "kafka target topic failed: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED));
+					log(Constants.LOG_LEVEL_ALL, "kafka logging topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING));
+					log(Constants.LOG_LEVEL_ALL, "");
 					
-					ruleEngineConsumerProducer.setKafkaTopicSource(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE));
-					ruleEngineConsumerProducer.setKafkaTopicTarget(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET));
-					ruleEngineConsumerProducer.setKafkaTopicFailed(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED));
-					ruleEngineConsumerProducer.setKafkaTopicLogging(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING));
-					ruleEngineConsumerProducer.setRuleEngineZipFileCheckModifiedInterval(Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL)));
-					
-					ruleEngineConsumerProducer.setFailedMode(failedMode);
-					ruleEngineConsumerProducer.setFailedNumberOfGroups(failedNumberOfGroups);
-					ruleEngineConsumerProducer.setKafkaConsumerPoll(kafkaConsumerPoll);
-					ruleEngineConsumerProducer.setOutputToFailedTopic(outputToFailedTopic);
-					
-					// we do not want to preserve the detailed results of the ruleengine execution
-					// if we are not logging the detailed results to a topic
-					if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)==null || getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING).equals(""))
+					// create a RuleEngineConsumerProducer instance and run it
+					try
 					{
-						ruleEngineConsumerProducer.setPreserveRuleExecutionResults(false);
+						RuleEngineConsumerProducer ruleEngineConsumerProducer = new RuleEngineConsumerProducer(args[3],kafkaConsumerProperties,kafkaProducerProperties);
+						
+						ruleEngineConsumerProducer.setKafkaTopicSource(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE));
+						ruleEngineConsumerProducer.setKafkaTopicTarget(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET));
+						ruleEngineConsumerProducer.setKafkaTopicFailed(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED));
+						ruleEngineConsumerProducer.setKafkaTopicLogging(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING));
+						ruleEngineConsumerProducer.setRuleEngineZipFileCheckModifiedInterval(Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL)));
+						
+						ruleEngineConsumerProducer.setFailedMode(failedMode);
+						ruleEngineConsumerProducer.setFailedNumberOfGroups(failedNumberOfGroups);
+						ruleEngineConsumerProducer.setKafkaConsumerPoll(kafkaConsumerPoll);
+						ruleEngineConsumerProducer.setOutputToFailedTopic(outputToFailedTopic);
+						
+						// we do not want to preserve the detailed results of the ruleengine execution
+						// if we are not logging the detailed results to a topic
+						if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)==null || getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING).equals(""))
+						{
+							ruleEngineConsumerProducer.setPreserveRuleExecutionResults(false);
+						}
+						
+						if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT).equals(""))
+						{
+							ruleEngineConsumerProducer.setKafkaTopicSourceFormat(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT));
+						}
+						
+						if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_FIELDS)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_FIELDS).equals(""))
+						{
+							ruleEngineConsumerProducer.setKafkaTopicSourceFormatCsvFields(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_FIELDS));
+						}
+						
+						if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_SEPARATOR)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_SEPARATOR).equals(""))
+						{
+							ruleEngineConsumerProducer.setKafkaTopicSourceFormatCsvSeparator(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_SEPARATOR));
+						}
+						
+						ruleEngineConsumerProducer.run();
 					}
-					
-					if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT).equals(""))
+					catch(Exception ex)
 					{
-						ruleEngineConsumerProducer.setKafkaTopicSourceFormat(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT));
+						System.out.println(ex.getMessage());
 					}
-					
-					if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_FIELDS)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_FIELDS).equals(""))
-					{
-						ruleEngineConsumerProducer.setKafkaTopicSourceFormatCsvFields(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_FIELDS));
-					}
-					
-					if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_SEPARATOR)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_SEPARATOR).equals(""))
-					{
-						ruleEngineConsumerProducer.setKafkaTopicSourceFormatCsvSeparator(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_SEPARATOR));
-					}
-					
-					ruleEngineConsumerProducer.run();
 				}
-				catch(Exception ex)
+				else
 				{
-					System.out.println(ex.getMessage());
+					String kafkaBrokers = kafkaConsumerProperties.getProperty(Constants.PROPERTY_KAFKA_BOOTSTRAP_SERVERS);
+					KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR,"could not connect to Kafka broker(s) at: " + kafkaBrokers +" in " + Constants.ADMIN_CLIENT_TIMEOUT_MS + " milliseconds");
+					KafkaRuleEngine.log(Constants.LOG_LEVEL_ALL,"end of program");
 				}
 			}
 			else
 			{
-				String kafkaBrokers = kafkaConsumerProperties.getProperty(Constants.PROPERTY_KAFKA_BOOTSTRAP_SERVERS);
-				System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR,"could not connect to Kafka broker(s) at: " + kafkaBrokers +" in " + ADMIN_CLIENT_TIMEOUT_MS + " milliseconds"));
+				KafkaRuleEngine.log(Constants.LOG_LEVEL_ALL,"end of program");
 			}
+		}
+	}
+
+	/**
+	 * method to output log messages
+	 * 
+	 * the default logging level is INFO.  
+	 * 
+	 */
+	public static void log(int messageLogLevel, String message)
+	{
+		if(messageLogLevel<= logLevel)
+		{
+			System.out.println(getSystemMessage(Constants.LOG_LEVEL_NAMES[messageLogLevel],message));
 		}
 	}
 	
 	private static void help()
 	{
-		System.out.println("RuleEngineConsumerProducer. Program to process data from an Apache Kafka source topic,");
+		System.out.println("KafkaRuleEngine. Program to process data from an Apache Kafka source topic,");
     	System.out.println("run the business rules from a ruleengine project file against the data and output the");
-    	System.out.println("results to an Apache kafka target topic. Failed rows of data may be output to a different topic.");
+    	System.out.println("results to an Apache Kafka target topic. Failed rows of data may be output to a different topic.");
+    	System.out.println();
     	System.out.println("Additionally an optional topic for logging may be specified which will contain the detailed");
-    	System.out.println("results of the execution of the ruleengine.");
+    	System.out.println("results of the execution of the individual rules.");
     	System.out.println();
     	System.out.println("The Apache Kafka source topic messages must be in JSON or CSV format. Output will be in JSON format");
     	System.out.println();
     	System.out.println("Four files must be specified, defining various properties for the program and the ruleengine project zip file.");
     	System.out.println();
-    	System.out.println("RuleEngineConsumerProducer [ruleengine properties file] [kafka consumer properties file] [kafka producer properties file]");
+    	System.out.println("KafkaRuleEngine [ruleengine properties file] [kafka consumer properties file] [kafka producer properties file] [log level]");
     	System.out.println("where [ruleengine properties file]     : required. path and name of the ruleengine properties file");
     	System.out.println("      [kafka consumer properties file] : required. path and name of the kafka consumer properties file");
     	System.out.println("      [kafka producer properties file] : required. path and name of the kafka producer properties file");
     	System.out.println("      [rule engine project file]       : required. path and name of the rule engine project file");
+    	System.out.println("      [log level]                      : optional. supresses messages above the selected logging level. 1=Error, 2=Warnings, 3=Info, 4=Detailed");
     	System.out.println();
-    	System.out.println("example: RuleEngineConsumerProducer /home/test/kafka_ruleengine.properties /home/test/kafka_consumer.properties /home/test/kafka_producer.properties /home/test/my_project_file.zip");
+    	System.out.println("example: KafkaRuleEngine /home/test/kafka_ruleengine.properties /home/test/kafka_consumer.properties /home/test/kafka_producer.properties /home/test/my_project_file.zip 3");
     	System.out.println();
     	System.out.println("published as open source under the Apache License. read the licence notice");
     	System.out.println("check https://github.com/uwegeercken for source code, documentation and samples.");
@@ -175,54 +203,86 @@ public class KafkaRuleEngine
     	System.out.println();
 	}
 	
-	private static Properties loadProperties(String propertiesFilename) throws PropertiesFileException,FileNotFoundException,IOException
+
+	/**
+	 * Loads the properties from the given file
+	 * 
+	 * @param filename		the path and name of the properties file
+	 * @return				Properties object
+	 */
+	private static Properties loadProperties(String propertiesFilename) 
     {
     	Properties properties = new Properties();
 		File propertiesFile = new File(propertiesFilename);
     	if(!propertiesFile.exists())
     	{
-    		throw new PropertiesFileException(getSystemMessage(Constants.LEVEL_ERROR,"properties file not found: [" + propertiesFilename + "]"));
+    		log(Constants.LOG_LEVEL_ERROR,"properties file not found: [" + propertiesFilename + "]");
     	}
     	else if(!propertiesFile.canRead())
     	{
-    		throw new PropertiesFileException(getSystemMessage(Constants.LEVEL_ERROR,"properties file can not be read: [" + propertiesFilename + "]"));
+    		log(Constants.LOG_LEVEL_ERROR,"properties file can not be read: [" + propertiesFilename + "]");
     	}
     	else if(!propertiesFile.isFile())
     	{
-    		throw new PropertiesFileException(getSystemMessage(Constants.LEVEL_ERROR,"properties file is not a file: [" + propertiesFilename + "]"));
+    		log(Constants.LOG_LEVEL_ERROR,"properties file is not a file: [" + propertiesFilename + "]");
     	}
     	else
     	{
-    		FileInputStream inputStream = new FileInputStream(propertiesFile);
-    		properties.load(inputStream);
-    		inputStream.close();
+    		try(FileInputStream inputStream = new FileInputStream(propertiesFile);)
+    		{
+    			properties.load(inputStream);
+    			inputStream.close();
+    		}
+    		catch(Exception ex)
+    		{
+    			log(Constants.LOG_LEVEL_ERROR,"properties file not found: [" + propertiesFilename + "]");
+    		}
     	}
     	return properties;
     }
 	
-	private static void checkRuleEngineProjectZipFile(String filename) throws FileNotFoundException,IOException,ZipException
+	/**
+	 * checks if the ruleengine project zip file is accessible
+	 * 
+	 * @param filename		the path and name of the project zip file
+	 * @return				boolean indicator if file is accessible
+	 */
+	private static boolean ruleEngineProjectZipFileOk(String filename) 
     {
-    	File ruleengineFile = new File(filename);
+    	boolean ruleEngineProjectZipFileOk = true;
+		File ruleengineFile = new File(filename);
 		
     	if(!ruleengineFile.exists())
     	{
-    		throw new FileNotFoundException(getSystemMessage(Constants.LEVEL_ERROR,"ruleengine project zip file not found: [" + filename + "]"));
+    		log(Constants.LOG_LEVEL_ERROR,"ruleengine project zip file not found: [" + filename + "]");
+    		ruleEngineProjectZipFileOk = false;
     	}
     	else if(!ruleengineFile.canRead())
     	{
-    		throw new FileNotFoundException(getSystemMessage(Constants.LEVEL_ERROR,"ruleengine project zip file can not be read: [" + filename + "]"));
+    		log(Constants.LOG_LEVEL_ERROR,"ruleengine project zip file can not be read: [" + filename + "]");
+    		ruleEngineProjectZipFileOk = false;
     	}
     	else if(!ruleengineFile.isFile())
     	{
-    		throw new FileNotFoundException(getSystemMessage(Constants.LEVEL_ERROR,"ruleengine project zip file is not a file: [" + filename + "]"));
+    		log(Constants.LOG_LEVEL_ERROR,"ruleengine project zip file is not a file: [" + filename + "]");
+    		ruleEngineProjectZipFileOk = false;
     	}
+   		return ruleEngineProjectZipFileOk;
     }
 	
+	/**
+	 * checks is the specified broker(s) is (are) available
+	 * 
+	 * A check using the AdminClient is made to retrieve a list of topics. If this fails
+	 * then it is assumed that the broker(s) is (are) not available
+	 * 
+	 * @return		boolean indicator is broker(s) is (are) available
+	 */
 	private static boolean brokersAvailable()
 	{
 		try (AdminClient client = AdminClient.create(kafkaConsumerProperties)) 
 		{
-			client.listTopics(new ListTopicsOptions().timeoutMs(ADMIN_CLIENT_TIMEOUT_MS)).listings().get();
+			client.listTopics(new ListTopicsOptions().timeoutMs(Constants.ADMIN_CLIENT_TIMEOUT_MS)).listings().get();
 			return true;
 		}
 		catch (Exception ex)
@@ -278,6 +338,7 @@ public class KafkaRuleEngine
 			}
 			catch(Exception ex)
 			{
+				log(Constants.LOG_LEVEL_ERROR,"error converting property to long value [ " + Constants.PROPERTY_KAFKA_CONSUMER_POLL + "] from properties file [" + propertiesFilename + "]");
 			}
 		}
 		
@@ -291,6 +352,7 @@ public class KafkaRuleEngine
 			}
 			catch(Exception ex)
 			{
+				log(Constants.LOG_LEVEL_ERROR,"error converting property to integer value [ " + Constants.PROPERTY_RULEENGINE_FAILED_MODE + "] from properties file [" + propertiesFilename + "]");
 			}
 		}
 		
@@ -306,6 +368,7 @@ public class KafkaRuleEngine
 				}
 				catch(Exception ex)
 				{
+					log(Constants.LOG_LEVEL_ERROR,"error converting property to integer value [ " + Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS + "] from properties file [" + propertiesFilename + "]");
 				}
 			}
 		}
@@ -317,8 +380,9 @@ public class KafkaRuleEngine
 	}
 	
 	/**
+	 * Get the current data and time in a standard format
 	 * 
-	 * @return	the current date time in a standard format
+	 * @return	datetime in standard format
 	 */
 	private static String getExecutionDateTime()
 	{
@@ -326,8 +390,9 @@ public class KafkaRuleEngine
 	}
 	
 	/**
+	 * Formats messages in a standard way
 	 * 
-	 * @param type	type of the message
+	 * @param type	type of the message (log level)
 	 * @param text	text of the message
 	 * @return		standardized text to output
 	 */

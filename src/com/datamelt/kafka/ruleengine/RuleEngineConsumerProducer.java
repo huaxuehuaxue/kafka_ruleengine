@@ -60,7 +60,7 @@ import com.datamelt.util.RowFieldCollection;
  * 
  * The source topic data is expected to be in JSON format. Output will be in JSON format.
  * 
- * @author uwe geercken - 2018-06-26
+ * @author uwe geercken - 2018-08-05
  *
  */
 public class RuleEngineConsumerProducer implements Runnable
@@ -100,14 +100,16 @@ public class RuleEngineConsumerProducer implements Runnable
 		
 		// register watcher for changed or deleted project zip file
 		key = ruleEngineZipFilePath.register(watcher, StandardWatchEventKinds.ENTRY_MODIFY,StandardWatchEventKinds.ENTRY_DELETE);
+		KafkaRuleEngine.log(Constants.LOG_LEVEL_DETAILED, "registered watcher for changed or deleted project zip file");
 		
+		KafkaRuleEngine.log(Constants.LOG_LEVEL_DETAILED, "adding shutdown hook");
 		Runtime.getRuntime().addShutdownHook(new Thread()
 		{
 		    public void run() {
-	        	System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_INFO,"program shutdown..."));
+	        	KafkaRuleEngine.log(Constants.LOG_LEVEL_INFO,"program shutdown...");
 		        try
 		        {
-			    	keepRunning = false;
+		        	keepRunning = false;
 		        }
 		        catch(Exception ex)
 		        {
@@ -142,15 +144,17 @@ public class RuleEngineConsumerProducer implements Runnable
 		BusinessRulesEngine ruleEngine = null;
 		try
 		{
+			KafkaRuleEngine.log(Constants.LOG_LEVEL_DETAILED, "initializing ruleengine with project zip file: [" + ruleEngineProjectFile + "]");
 			// instantiate the ruleengine with the project zip file
 			ruleEngine = new BusinessRulesEngine(new ZipFile(ruleEngineProjectFile));
 
+			KafkaRuleEngine.log(Constants.LOG_LEVEL_DETAILED, "preserve ruleengine execution results to: [" + preserveRuleExecutionResults + "]");
 			// preserve rule execution results or not
 			ruleEngine.setPreserveRuleExcecutionResults(preserveRuleExecutionResults);
 		}
 		catch(Exception ex)
 		{
-			System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_INFO, "error processing the ruleengine project file: [" + ruleEngineProjectFile + "]"));
+			KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "error processing the ruleengine project file: [" + ruleEngineProjectFile + "]");
 			// we do not want to start reading data, if the ruleengine produced an exception
 			keepRunning=false;
 			
@@ -182,9 +186,15 @@ public class RuleEngineConsumerProducer implements Runnable
 				if(elapsedTime >= ruleEngineZipFileCheckModifiedInterval)
 				{
 					startTime = currentTime;
+					if(errorReloadingProjectZipFile)
+					{
+						KafkaRuleEngine.log(Constants.LOG_LEVEL_INFO, "currently no data is processed because of a previous error reloading the project zip file: [" + ruleEngineZipFile + "]");
+					}
+					KafkaRuleEngine.log(Constants.LOG_LEVEL_DETAILED, "checking if project zip file has changed: [" + ruleEngineZipFile + "]");
 					boolean reload = checkFileChanges();
 					if(reload)
 					{
+						KafkaRuleEngine.log(Constants.LOG_LEVEL_DETAILED, "project zip file has changed - reloading: [" + ruleEngineZipFile + "]");
 			        	synchronized(ruleEngine)
 			        	{
 							try
@@ -192,15 +202,19 @@ public class RuleEngineConsumerProducer implements Runnable
 				        		// reload the ruleengine project zip file
 								ruleEngine.reloadZipFile(new ZipFile(new File(ruleEngineZipFile)));
 								errorReloadingProjectZipFile = false;
-				        		System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_INFO, "reloaded ruleengine project file: [" + ruleEngineZipFile + "]"));
+				        		KafkaRuleEngine.log(Constants.LOG_LEVEL_INFO, "reloaded ruleengine project file: [" + ruleEngineZipFile + "]");
 				        	}
 				        	catch(Exception ex)
 				        	{
 				        		errorReloadingProjectZipFile = true;
-				        		System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "could not process changed ruleengine project file: [" + ruleEngineZipFile + "]"));
-				        		System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_WARNING, "no further data will be processed, until a valid ruleengine project zip file is available"));
+				        		KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "could not process changed ruleengine project file: [" + ruleEngineZipFile + "]");
+				        		KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "no further data will be processed, until a valid ruleengine project zip file is available");
 				        	}
 			        	}
+					}
+					else
+					{
+						KafkaRuleEngine.log(Constants.LOG_LEVEL_DETAILED, "project zip file unchanged - no reload action: [" + ruleEngineZipFile + "]");
 					}
 				}
 				
@@ -285,7 +299,7 @@ public class RuleEngineConsumerProducer implements Runnable
 						// if we have a parsing problem with the JSON message, we continue processing
 						catch(JSONException jex)
 						{
-							System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "error parsing message: [" + record.value() + "]"));
+							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "error parsing message: [" + record.value() + "]");
 						}
 						// if we have any other exception we shutdown
 						catch(Exception ex)
@@ -542,14 +556,14 @@ public class RuleEngineConsumerProducer implements Runnable
 
 	        if(event.kind().equals(StandardWatchEventKinds.ENTRY_DELETE))
 	        {
-	        	System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "the ruleengine project zip file: [" + filename.getFileName() + "] has been deleted"));	        
+	        	KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "the ruleengine project zip file: [" + filename.getFileName() + "] has been deleted");	        
 	        }
 	        else
 	        {
 		        // if the modified file is the project zip file, we want to reload the file
 		        if(eventFilename.equals(ruleEngineZipFileWithoutPath))
 		        {
-		        	System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_INFO, "detected changed ruleengine project file: [" + filename.getFileName() + "]"));
+		        	KafkaRuleEngine.log(Constants.LOG_LEVEL_INFO, "detected changed ruleengine project file: [" + filename.getFileName() + "]");
 		        	return true;
 		        }
 	        }
@@ -563,7 +577,7 @@ public class RuleEngineConsumerProducer implements Runnable
 	    }
 	    catch(Exception ex)
 	    {
-	    	System.out.println(KafkaRuleEngine.getSystemMessage(Constants.LEVEL_ERROR, "error resetting the watch file key on folder: [" + ruleEngineZipFileWithoutPath + "]"));
+	    	KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "error resetting the watch file key on folder: [" + ruleEngineZipFileWithoutPath + "]");
 	    }
 	    return false;
 	}
