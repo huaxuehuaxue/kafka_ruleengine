@@ -21,6 +21,7 @@ package com.datamelt.kafka.ruleengine;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -299,8 +300,18 @@ public class KafkaRuleEngine
 	 * these fields will be added to the rowfield collection and subsequently also to the output
 	 * to the target topic.
 	 * 
-	 * 
-	 * @param collection	collection of row fields
+	 * these additional fields are initialized to the following default values:
+	 *  - String to an empty string
+	 *  - Date to null
+	 *  - integer to zero
+	 *  - long to zero
+	 *  - float to zero
+	 *  - double to zero
+	 *  - boolean to false
+	 *  - BigDecimal to zero
+	 *  
+	 * @param referenceFields	ArrayList of reference fields
+	 * @param collection		collection of row fields
 	 */
 	public static void addReferenceFields(ArrayList <ReferenceField>referenceFields, RowFieldCollection collection)
 	{
@@ -310,8 +321,59 @@ public class KafkaRuleEngine
 			boolean existField = collection.existField(referenceField.getName());
 			if(!existField)
 			{
-				ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName()));
-				collection.addField(referenceField.getName(),null);
+				if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_STRING)
+				{
+					String value = "";
+					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					collection.addField(referenceField.getName(),value);
+				}
+				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_INTEGER)
+				{
+					int value=0;
+					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					collection.addField(referenceField.getName(),value);
+				}
+				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_LONG)
+				{
+					long value=0;
+					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					collection.addField(referenceField.getName(),value);
+				}
+				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_DOUBLE)
+				{
+					double value=0.0d;
+					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					collection.addField(referenceField.getName(),value);
+				}
+				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_FLOAT)
+				{
+					float value=0.0f;
+					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					collection.addField(referenceField.getName(),value);
+				}
+				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_BOOLEAN)
+				{
+					boolean value=false;
+					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					collection.addField(referenceField.getName(),value);
+				}
+				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_BIGDECIMAL)
+				{
+					BigDecimal value=new BigDecimal(0);
+					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					collection.addField(referenceField.getName(),value);
+				}
+				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_DATE)
+				{
+					Date value=null;
+					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					collection.addField(referenceField.getName(),value);
+				}
+				else
+				{
+					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName()));
+					collection.addField(referenceField.getName(),null);
+				}
 			}
 		}
 	}
