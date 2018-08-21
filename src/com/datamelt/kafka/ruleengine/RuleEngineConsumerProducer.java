@@ -155,6 +155,7 @@ public class RuleEngineConsumerProducer implements Runnable
 		catch(Exception ex)
 		{
 			KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "error processing the ruleengine project file: [" + ruleEngineProjectFile + "]");
+			KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "no data will be consumed from the kafka topic until a valid project file was processed");
 			// we do not want to start reading data, if the ruleengine produced an exception
 			keepRunning=false;
 			
@@ -211,10 +212,6 @@ public class RuleEngineConsumerProducer implements Runnable
 				        		KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "no further data will be processed, until a valid ruleengine project zip file is available");
 				        	}
 			        	}
-					}
-					else
-					{
-						KafkaRuleEngine.log(Constants.LOG_LEVEL_DETAILED, "project zip file unchanged - no reload action: [" + ruleEngineZipFile + "]");
 					}
 				}
 				
@@ -334,12 +331,12 @@ public class RuleEngineConsumerProducer implements Runnable
 	}
 
 	/**
-	 * method sends a message for those records that failed the ruleengine logik to the relevant kafka target topic.
+	 * method sends a message for those records that failed the ruleengine logic to the relevant kafka target topic.
 	 * 
 	 * the message will contain the original fields from the source topic, plus the refercence fields 
 	 * that are defined in the ruleengine project file that are not already defined in the message itself.
 	 * 
-	 * For example if the project file contains a reference field "country" which is which is set by an action
+	 * For example if the project file contains a reference field "country" which is set by an action
 	 * in one of the rulegroups and that field is not already existing in the source topic message, then this
 	 * field will be added to the message of the target topic.
 	 * 
@@ -534,6 +531,12 @@ public class RuleEngineConsumerProducer implements Runnable
 		this.kafkaTopicSourceFormatCsvSeparator = kafkaTopicSourceFormatCsvSeparator;
 	}
 
+	/**
+	 * method checks if the ruleengine project file has been changed or deleted
+	 * 
+	 * @return
+	 */
+	
 	private synchronized boolean checkFileChanges()
 	{
 		// loop over watch events for the given key
@@ -554,14 +557,13 @@ public class RuleEngineConsumerProducer implements Runnable
 	        Path filename = ev.context();
 	        String eventFilename = filename.getFileName().toString();
 
-	        if(event.kind().equals(StandardWatchEventKinds.ENTRY_DELETE))
+	        if(eventFilename !=null && eventFilename.equals(ruleEngineZipFileWithoutPath))
 	        {
-	        	KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "the ruleengine project zip file: [" + filename.getFileName() + "] has been deleted");	        
-	        }
-	        else
-	        {
-		        // if the modified file is the project zip file, we want to reload the file
-		        if(eventFilename.equals(ruleEngineZipFileWithoutPath))
+		        if(event.kind().equals(StandardWatchEventKinds.ENTRY_DELETE))
+		        {
+		        	KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "the ruleengine project zip file: [" + filename.getFileName() + "] has been deleted");	        
+		        }
+		        else
 		        {
 		        	KafkaRuleEngine.log(Constants.LOG_LEVEL_INFO, "detected changed ruleengine project file: [" + filename.getFileName() + "]");
 		        	return true;
