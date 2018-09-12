@@ -48,7 +48,7 @@ public class KafkaRuleEngine
 	private static int failedNumberOfGroups							 	 	 = 0;
 	private static long kafkaConsumerPoll									 = 100;
 	
-	private static int logLevel												 = Constants.LOG_LEVEL_INFO;
+	private static int logLevel 											 = Constants.LOG_LEVEL_INFO;
 	
 	public static void main(String[] args) throws Exception
 	{

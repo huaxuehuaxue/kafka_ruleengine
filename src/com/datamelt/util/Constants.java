@@ -57,7 +57,7 @@ public class Constants
 	// for checking broker availability
 	public static final int ADMIN_CLIENT_TIMEOUT_MS 							= 5000;
 	
-	// standrad datetime format for loggin
+	// standard datetime format for logging
 	public static final String DATETIME_FORMAT									= "yyyy-MM-dd HH:mm:ss";
 
 	// log levels

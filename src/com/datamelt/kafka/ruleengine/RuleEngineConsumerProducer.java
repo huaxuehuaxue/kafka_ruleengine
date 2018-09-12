@@ -60,7 +60,7 @@ import com.datamelt.util.RowFieldCollection;
  * 
  * The source topic data is expected to be in JSON format. Output will be in JSON format.
  * 
- * @author uwe geercken - 2018-08-05
+ * @author uwe geercken - 2018-09-12
  *
  */
 public class RuleEngineConsumerProducer implements Runnable
@@ -298,10 +298,17 @@ public class RuleEngineConsumerProducer implements Runnable
 						{
 							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "error parsing message: [" + record.value() + "]");
 						}
-						// if we have any other exception we shutdown
+						// if we have a problem with SSL
+						catch (javax.net.ssl.SSLProtocolException sslex)
+						{
+							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, sslex.getMessage());
+							 KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "server refused certificate");
+							 keepRunning=false;
+						}
+						// if we have any other exception 
 						catch(Exception ex)
 						{
-							ex.printStackTrace();
+							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, ex.getMessage());
 							keepRunning=false;
 						}
 					}

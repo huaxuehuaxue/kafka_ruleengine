@@ -19,6 +19,8 @@
 
 package com.datamelt.util;
 
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
 import org.json.JSONObject;
 
 /**
@@ -88,6 +90,29 @@ public class FormatConverter
 		
         // create a new rowfield collection using keys and values
 		return new RowFieldCollection(fieldNames,fields);  
+
+	}
+	
+	/**
+	 * returns a collection of fields containing field names and their values from the record
+	 * 
+	 * @param record			the kafka message value in AVRO format 
+	 * @param schema 			the AVRO schema corresponding to the message
+	 * @return					a rowfield collection
+	 */
+	public static RowFieldCollection convertFromAvro(GenericRecord record,Schema schema)
+	{
+		RowFieldCollection rowFieldCollection = null;
+		try
+		{
+			rowFieldCollection = new RowFieldCollection(record, schema);
+		}
+		catch(Exception ex)
+		{
+			ex.printStackTrace();
+		}
+        
+		return rowFieldCollection;  
 
 	}
 }
