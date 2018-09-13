@@ -301,9 +301,9 @@ public class RuleEngineConsumerProducer implements Runnable
 						// if we have a problem with SSL
 						catch (javax.net.ssl.SSLProtocolException sslex)
 						{
+							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "server refused certificate or other SSL protocol exception");
 							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, sslex.getMessage());
-							 KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "server refused certificate");
-							 keepRunning=false;
+							keepRunning=false;
 						}
 						// if we have any other exception 
 						catch(Exception ex)
@@ -546,6 +546,8 @@ public class RuleEngineConsumerProducer implements Runnable
 	
 	private synchronized boolean checkFileChanges()
 	{
+		boolean fileChanged = false;
+		
 		// loop over watch events for the given key
 		for (WatchEvent<?> event: key.pollEvents())
 		{
@@ -573,7 +575,7 @@ public class RuleEngineConsumerProducer implements Runnable
 		        else
 		        {
 		        	KafkaRuleEngine.log(Constants.LOG_LEVEL_INFO, "detected changed ruleengine project file: [" + filename.getFileName() + "]");
-		        	return true;
+		        	fileChanged = true;
 		        }
 	        }
 	    }
@@ -588,7 +590,7 @@ public class RuleEngineConsumerProducer implements Runnable
 	    {
 	    	KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "error resetting the watch file key on folder: [" + ruleEngineZipFileWithoutPath + "]");
 	    }
-	    return false;
+	    return fileChanged;
 	}
 
 	public int getRuleEngineZipFileCheckModifiedInterval()

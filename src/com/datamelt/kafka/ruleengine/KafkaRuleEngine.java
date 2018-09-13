@@ -100,9 +100,9 @@ public class KafkaRuleEngine
 					log(Constants.LOG_LEVEL_ALL, "kafka source topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE));
 					log(Constants.LOG_LEVEL_ALL, "ruleengine project file: " + args[3]);
 					log(Constants.LOG_LEVEL_ALL, "ruleengine project file check interval (seconds): " + getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL));
-					log(Constants.LOG_LEVEL_ALL, "kafka target topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET));
-					log(Constants.LOG_LEVEL_ALL, "kafka target topic failed: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED));
-					log(Constants.LOG_LEVEL_ALL, "kafka logging topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING));
+					log(Constants.LOG_LEVEL_ALL, "kafka target topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET)!=null ? getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET):"[undefined]");
+					log(Constants.LOG_LEVEL_ALL, "kafka target topic failed: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)!=null ? getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED):"[undefined]");
+					log(Constants.LOG_LEVEL_ALL, "kafka logging topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)!=null ? getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING):"[undefined]");
 					log(Constants.LOG_LEVEL_ALL, "");
 					
 					// create a RuleEngineConsumerProducer instance and run it
