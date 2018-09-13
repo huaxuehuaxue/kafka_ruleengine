@@ -41,6 +41,7 @@ public class KafkaRuleEngine
 	private static ArrayList<RowField> ruleEngineProjectFileReferenceFields  = new ArrayList<RowField>();
 	private static Properties properties 									 = new Properties();
 	private static String propertiesFilename;
+	private static Properties adminClientProperties							 = new Properties();
 	private static Properties kafkaConsumerProperties						 = new Properties();
 	private static Properties kafkaProducerProperties						 = new Properties();
 	private static SimpleDateFormat sdf 							 		 = new SimpleDateFormat(Constants.DATETIME_FORMAT);
@@ -77,8 +78,14 @@ public class KafkaRuleEngine
 			// add properties from the kafka ruleengine properties file
 			kafkaProducerProperties.put(Constants.PROPERTY_KAFKA_BOOTSTRAP_SERVERS, getProperty(Constants.PROPERTY_KAFKA_BROKERS));
 			
+			// add properties from the kafka ruleengine properties file
+			adminClientProperties.put(Constants.PROPERTY_KAFKA_BOOTSTRAP_SERVERS, getProperty(Constants.PROPERTY_KAFKA_BROKERS));
+			
 			// process properties into variables;
 			processProperties();
+			
+			// check the properties file for availability of variables;
+			boolean propertiesFileOk = checkProperties();
 
 			// if the user specified a log level
 			if(args.length==5 && args[4]!=null)
@@ -86,9 +93,9 @@ public class KafkaRuleEngine
 				logLevel = Integer.parseInt(args[4]);
 			}
 			
-			// check if the zip file is present and accessible
+			// check if the zip file is present and accessible and if the ruleengine properties file is ok as well
 			boolean zipFileOk = ruleEngineProjectZipFileOk(args[3]);
-			if(zipFileOk)
+			if(zipFileOk && propertiesFileOk)
 			{
 				// check if we can get a list of topics from the brokers using the AdminClient
 				// if not, then the brokers are probably not available
@@ -159,6 +166,14 @@ public class KafkaRuleEngine
 			}
 			else
 			{
+				if(zipFileOk==false)
+				{
+					KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR,"there was an error with the rule engine project zip file: [" + args[3] + "]");
+				}
+				if(propertiesFileOk==false)
+				{
+					KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR,"there was an error with the ruleengine properties file: [" + propertiesFilename + "]");
+				}
 				KafkaRuleEngine.log(Constants.LOG_LEVEL_ALL,"end of program");
 			}
 		}
@@ -283,7 +298,7 @@ public class KafkaRuleEngine
 	 */
 	private static boolean brokersAvailable()
 	{
-		try (AdminClient client = AdminClient.create(kafkaConsumerProperties)) 
+		try (AdminClient client = AdminClient.create(adminClientProperties)) 
 		{
 			client.listTopics(new ListTopicsOptions().timeoutMs(Constants.ADMIN_CLIENT_TIMEOUT_MS)).listings().get();
 			return true;
@@ -447,6 +462,32 @@ public class KafkaRuleEngine
 			String[] fields = getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS).split(Constants.PROPERTY_VALUES_SEPARATOR);
 			excludedFields = new ArrayList<String>(Arrays.asList(fields));
 		}
+	}
+	
+	private static boolean checkProperties()
+	{
+		boolean propertiesOk = true;
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE)==null || getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE).equals(""))
+		{
+			propertiesOk = false;
+			log(Constants.LOG_LEVEL_ERROR,Constants.PROPERTY_KAFKA_TOPIC_SOURCE + " is undefined in properties file [" + propertiesFilename + "]");
+		}
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT)==null || getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT).equals(""))
+		{
+			propertiesOk = false;
+			log(Constants.LOG_LEVEL_ERROR,Constants.PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT + " is undefined in properties file [" + propertiesFilename + "]");
+		}
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET)==null || getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET).equals(""))
+		{
+			propertiesOk = false;
+			log(Constants.LOG_LEVEL_ERROR,Constants.PROPERTY_KAFKA_TOPIC_TARGET + " is undefined in properties file [" + propertiesFilename + "]");
+		}
+		if(getProperty(Constants.PROPERTY_KAFKA_BROKERS)==null || getProperty(Constants.PROPERTY_KAFKA_BROKERS).equals(""))
+		{
+			propertiesOk = false;
+			log(Constants.LOG_LEVEL_ERROR,Constants.PROPERTY_KAFKA_BROKERS + " is undefined in properties file [" + propertiesFilename + "]");
+		}
+		return propertiesOk;
 	}
 	
 	/**
