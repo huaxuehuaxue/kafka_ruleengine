@@ -19,6 +19,8 @@
 
 package com.datamelt.util;
 
+import java.util.ArrayList;
+
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.json.JSONObject;
@@ -51,25 +53,31 @@ public class FormatConverter
 	/**
 	 * creates a JSONObject from the fields available in the rowfield collection.
 	 * 
+	 * if fields to be excluded from the output are defined, then these will be
+	 * excluded here.
 	 * 
 	 * @param collection	rowfield collection
 	 * @return				JSONObject containing json formated key/value pairs
 	 * @throws Exception	in case a field could not be retrieved from the collection
 	 */
 
-	public static JSONObject convertToJson(RowFieldCollection rowFieldCollection) throws Exception
+	public static JSONObject convertToJson(RowFieldCollection rowFieldCollection, ArrayList<String> excludedFields) throws Exception
 	{
 		JSONObject jsonObject = new JSONObject();
 		for(int i=0;i<rowFieldCollection.getNumberOfFields();i++)
 		{
 			RowField field = rowFieldCollection.getField(i);
-			if(field.getValue()==null)
+			// don't add fields that should be excluded
+			if(!excludedFields.contains(field.getName()))
 			{
-				jsonObject.put(field.getName(), JSONObject.NULL);
-			}
-			else
-			{
-				jsonObject.put(field.getName(), field.getValue());
+				if(field.getValue()==null)
+				{
+					jsonObject.put(field.getName(), JSONObject.NULL);
+				}
+				else
+				{
+					jsonObject.put(field.getName(), field.getValue());
+				}
 			}
 		}
 		return jsonObject;

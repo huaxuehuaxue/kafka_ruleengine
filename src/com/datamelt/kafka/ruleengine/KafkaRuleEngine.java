@@ -24,6 +24,7 @@ import java.io.FileInputStream;
 import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.Properties;
 
@@ -47,6 +48,7 @@ public class KafkaRuleEngine
 	private static int failedMode										 	 = 0;
 	private static int failedNumberOfGroups							 	 	 = 0;
 	private static long kafkaConsumerPoll									 = 100;
+	private static ArrayList<String> excludedFields							 = new ArrayList<>();
 	
 	private static int logLevel 											 = Constants.LOG_LEVEL_INFO;
 	
@@ -439,6 +441,12 @@ public class KafkaRuleEngine
 		{
 			outputToFailedTopic = true;
 		}
+		
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS)!=null && getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS).equals(""))
+		{
+			String[] fields = getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS).split(Constants.PROPERTY_VALUES_SEPARATOR);
+			excludedFields = new ArrayList<String>(Arrays.asList(fields));
+		}
 	}
 	
 	/**
@@ -481,5 +489,16 @@ public class KafkaRuleEngine
 		{
 			return "record_" + counter;
 		}
+	}
+	
+	/**
+	 * A list of fields can be defined in the properties file, which should not
+	 * be transfered to the output topics
+	 * 
+	 * @return 	arrylist of fields to be excluded from the output
+	 */
+	public static ArrayList<String> getExcludedFields()
+	{
+		return excludedFields;
 	}
 }

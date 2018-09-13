@@ -60,7 +60,7 @@ import com.datamelt.util.RowFieldCollection;
  * 
  * The source topic data is expected to be in JSON format. Output will be in JSON format.
  * 
- * @author uwe geercken - 2018-09-12
+ * @author uwe geercken - 2018-09-13
  *
  */
 public class RuleEngineConsumerProducer implements Runnable
@@ -246,11 +246,11 @@ public class RuleEngineConsumerProducer implements Runnable
 							// this is useful when outputting the detailed results.
 							String label = KafkaRuleEngine.getLabel(record.key(), counter);
 							
-							// run the ruleengine
+							// run the ruleengine to apply logic and execute actions
 							ruleEngine.run(label, collection);
 	
-							// format the values from the rowfield collection as json
-							JSONObject jsonMessage = FormatConverter.convertToJson(collection); 
+							// format the values from the rowfield collection as json for output
+							JSONObject jsonMessage = FormatConverter.convertToJson(collection, KafkaRuleEngine.getExcludedFields()); 
 							
 							// if we don't have a topic specified for the failed messages, then all
 							// messages are sent to the target topic

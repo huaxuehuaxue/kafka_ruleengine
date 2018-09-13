@@ -36,6 +36,7 @@ public class Constants
 	public static final String PROPERTY_KAFKA_MESSAGE_FORMAT					= "kafka.topic.source.format";
 	public static final String PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_FIELDS	= "kafka.topic.source.format.csv.fields";
 	public static final String PROPERTY_KAFKA_TOPIC_SOURCE_FORMAT_CSV_SEPARATOR	= "kafka.topic.source.format.csv.value.separator";
+	public static final String PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS				= "kafka.topic.exclude.fields";
 	
 	// separator used in the properties file when multiple values are specified
 	public static final String PROPERTY_VALUES_SEPARATOR						= ",";
