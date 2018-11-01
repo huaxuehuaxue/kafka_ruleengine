@@ -288,10 +288,11 @@ public class RuleEngineConsumerProducer implements Runnable
 							if(ruleEngine.getPreserveRuleExcecutionResults())
 							{
 								sendLoggingTargetTopicMessage(kafkaProducerLogging, record.key(), jsonMessage, ruleEngine);
-								
-								// clear the collection of details/result
-								ruleEngine.getRuleExecutionCollection().clear();
 							}
+							
+							// clear the collection of details/result
+							ruleEngine.getRuleExecutionCollection().clear();
+
 						}
 						// if we have a parsing problem with the JSON message, we continue processing
 						catch(JSONException jex)
