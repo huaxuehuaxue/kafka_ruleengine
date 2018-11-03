@@ -1,11 +1,14 @@
 # kafka_ruleengine
 
-Reads JSON formatted data from a Kafka topic, runs business rules (logic) on the data and
-outputs the resulting data to a Kafka target topic.
+Reads JSON or CSV formatted data from a Kafka topic, runs business rules (logic) on the data and
+outputs the resulting data in JSON format to a Kafka target topic.
 
 There is a web interface available to compose the rule logic in an easy to use way. Complex
 logic for checking data and also actions may be defined to update the data. Check:
 https://github.com/uwegeercken/rule_maintenance_war for more information.
+
+Documentation for the ruleengine, the Business Rules maintenance Web tool and for all available checks and actions
+is available at:https://github.com/uwegeercken/rule_maintenance_documentation
 
 The program requires a properties file, which defines the settings for the program.
 
@@ -41,7 +44,10 @@ Note: One or multiple rules are composed in a rulegroup. This way you can have r
 but the rulegroup as such passes. E.g. if you have two rules: one checks if the age is smaller than 50 and the
 other checks if the age is greater or equal to 50. The rules are connected using an "or" operator. If we have now a
 person at the age of 40, the first rule will pass and the other one will fail. But the rulegroup in which both rules
-are collected, will pass.
+are collected, will pass (because the rules are connected using an "or" condition).
+
+You may also define subgroups in rulegroups which allow grouping of rules and then the subgroups are connected using
+an "and" or "or" condition. This way you have the required flexibility to compose complex logic.
 
 Please send your feedback and help to enhance the tool.
 
@@ -69,5 +75,5 @@ Please send your feedback and help to enhance the tool.
 uwe geercken
 uwe.geercken@web.de
 
-last update: 2018-09-13
+last update: 2018-11-03
 
