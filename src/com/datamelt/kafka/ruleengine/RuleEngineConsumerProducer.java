@@ -60,10 +60,10 @@ import com.datamelt.util.RowFieldCollection;
  * 
  * The source topic data is expected to be in JSON format. Output will be in JSON format.
  * 
- * @author uwe geercken - 2018-09-13
+ * @author uwe geercken - 2018-09-14
  *
  */
-public class RuleEngineConsumerProducer implements Runnable
+public class RuleEngineConsumerProducer implements Runnable 
 {
 	private Properties kafkaConsumerProperties						 = new Properties();
 	private Properties kafkaProducerProperties						 = new Properties();
@@ -189,7 +189,7 @@ public class RuleEngineConsumerProducer implements Runnable
 					startTime = currentTime;
 					if(errorReloadingProjectZipFile)
 					{
-						KafkaRuleEngine.log(Constants.LOG_LEVEL_INFO, "currently no data is processed because of a previous error reloading the project zip file: [" + ruleEngineZipFile + "]");
+						KafkaRuleEngine.log(Constants.LOG_LEVEL_INFO, "currently no data is processed because of an error reloading the project zip file: [" + ruleEngineZipFile + "]");
 					}
 					KafkaRuleEngine.log(Constants.LOG_LEVEL_DETAILED, "checking if project zip file has changed: [" + ruleEngineZipFile + "]");
 					boolean reload = checkFileChanges();
@@ -303,12 +303,14 @@ public class RuleEngineConsumerProducer implements Runnable
 						{
 							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "server refused certificate or other SSL protocol exception");
 							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, sslex.getMessage());
+							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "stopping the service");
 							keepRunning=false;
 						}
 						// if we have any other exception 
 						catch(Exception ex)
 						{
 							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, ex.getMessage());
+							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "stopping the service");
 							keepRunning=false;
 						}
 					}

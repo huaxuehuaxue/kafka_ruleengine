@@ -27,11 +27,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.Properties;
+import java.util.concurrent.ExecutionException;
 
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.ListTopicsOptions;
 
 import com.datamelt.rules.core.ReferenceField;
+import com.datamelt.rules.engine.BusinessRulesEngine;
 import com.datamelt.util.Constants;
 import com.datamelt.util.RowField;
 import com.datamelt.util.RowFieldCollection;
@@ -61,6 +63,12 @@ public class KafkaRuleEngine
     	}
 		else
 		{
+			// if the user specified a log level
+			if(args.length==5 && args[4]!=null)
+			{
+				logLevel = Integer.parseInt(args[4]);
+			}
+			
 			// load kafka ruleengine properties file
 			propertiesFilename = args[0];
 			properties = loadProperties(propertiesFilename);
@@ -87,30 +95,50 @@ public class KafkaRuleEngine
 			// check the properties file for availability of variables;
 			boolean propertiesFileOk = checkProperties();
 
-			// if the user specified a log level
-			if(args.length==5 && args[4]!=null)
+			String targetTopic = "[undefined]";
+			if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET).trim().equals(""))
 			{
-				logLevel = Integer.parseInt(args[4]);
+				targetTopic = getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET);
+			}
+			String failedTopic = "[undefined]";
+			if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED).trim().equals(""))
+			{
+				failedTopic = getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED);
 			}
 			
+			String loggingTopic = "[undefined]";
+			if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING).trim().equals(""))
+			{
+				loggingTopic = getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING);
+			}
+			
+			String ruleEngineVersion = "[" + BusinessRulesEngine.getVersion() + "] - last update: [" + BusinessRulesEngine.getLastUpdateDate() + "]";
+
+			log(Constants.LOG_LEVEL_ALL, "Start of KafkaRuleEngine program...");
+			log(Constants.LOG_LEVEL_INFO, "JaRE ruleengine version: " + ruleEngineVersion);
+			log(Constants.LOG_LEVEL_DETAILED,"properties for the ruleengine => " + properties.toString());
+			log(Constants.LOG_LEVEL_DETAILED,"properties for kafka consumer => " + kafkaConsumerProperties.toString());
+			log(Constants.LOG_LEVEL_DETAILED,"properties for kafka producer => " + kafkaProducerProperties.toString());
+			log(Constants.LOG_LEVEL_DETAILED,"properties for admin client => " + adminClientProperties.toString());
+			log(Constants.LOG_LEVEL_ALL, "kafka brokers: " + getProperty(Constants.PROPERTY_KAFKA_BROKERS));
+			log(Constants.LOG_LEVEL_ALL, "kafka source topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE));
+			log(Constants.LOG_LEVEL_ALL, "ruleengine project file: " + args[3]);
+			log(Constants.LOG_LEVEL_ALL, "ruleengine project file check interval (seconds): " + getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL));
+			log(Constants.LOG_LEVEL_ALL, "kafka target topic: " + targetTopic);
+			log(Constants.LOG_LEVEL_ALL, "kafka failed topic: " + failedTopic);
+			log(Constants.LOG_LEVEL_ALL, "kafka logging topic: " + loggingTopic);
+			log(Constants.LOG_LEVEL_ALL, "");
+			
 			// check if the zip file is present and accessible and if the ruleengine properties file is ok as well
-			boolean zipFileOk = ruleEngineProjectZipFileOk(args[3]);
+			boolean zipFileOk = ruleEngineProjectZipFileOk(args[3]); 
 			if(zipFileOk && propertiesFileOk)
 			{
 				// check if we can get a list of topics from the brokers using the AdminClient
 				// if not, then the brokers are probably not available
-				boolean kafkaBrokersAvailable = brokersAvailable();
+				//boolean kafkaBrokersAvailable = brokersAvailable();
+				boolean kafkaBrokersAvailable = true;
 				if(kafkaBrokersAvailable)
 				{
-					log(Constants.LOG_LEVEL_ALL, "Start of KafkaRuleEngine program...");
-					log(Constants.LOG_LEVEL_ALL, "kafka brokers: " + getProperty(Constants.PROPERTY_KAFKA_BROKERS));
-					log(Constants.LOG_LEVEL_ALL, "kafka source topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE));
-					log(Constants.LOG_LEVEL_ALL, "ruleengine project file: " + args[3]);
-					log(Constants.LOG_LEVEL_ALL, "ruleengine project file check interval (seconds): " + getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL));
-					log(Constants.LOG_LEVEL_ALL, "kafka target topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET)!=null ? getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET):"[undefined]");
-					log(Constants.LOG_LEVEL_ALL, "kafka target topic failed: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)!=null ? getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED):"[undefined]");
-					log(Constants.LOG_LEVEL_ALL, "kafka logging topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)!=null ? getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING):"[undefined]");
-					log(Constants.LOG_LEVEL_ALL, "");
 					
 					// create a RuleEngineConsumerProducer instance and run it
 					try
@@ -303,8 +331,14 @@ public class KafkaRuleEngine
 			client.listTopics(new ListTopicsOptions().timeoutMs(Constants.ADMIN_CLIENT_TIMEOUT_MS)).listings().get();
 			return true;
 		}
+		catch(ExecutionException cex)
+		{
+			log(Constants.LOG_LEVEL_ERROR,cex.getMessage());
+			return false;
+		}
 		catch (Exception ex)
 		{
+			log(Constants.LOG_LEVEL_ERROR,ex.getMessage());
 			return false;
         }
 	}
@@ -487,6 +521,31 @@ public class KafkaRuleEngine
 			propertiesOk = false;
 			log(Constants.LOG_LEVEL_ERROR,Constants.PROPERTY_KAFKA_BROKERS + " is undefined in properties file [" + propertiesFilename + "]");
 		}
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE).trim().equals("") && getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET).trim().equals(""))
+		{
+			if (getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE).trim().equals(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET).trim()))
+			{
+				log(Constants.LOG_LEVEL_ERROR,"source topic can not be the same as the target topic");
+				propertiesOk = false;
+			}
+		}
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE).trim().equals("") && getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING).trim().equals(""))
+		{
+			if (getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE).trim().equals(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_LOGGING).trim()))
+			{
+				log(Constants.LOG_LEVEL_ERROR,"source topic can not be the same as the logging topic");
+				propertiesOk = false;
+			}
+		}
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE).trim().equals("") && getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED).trim().equals(""))
+		{
+			if (getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE).trim().equals(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED).trim()))
+			{
+				log(Constants.LOG_LEVEL_ERROR,"source topic can not be the same as the failed topic");
+				propertiesOk = false;
+			}
+		}
+
 		return propertiesOk;
 	}
 	
