@@ -60,7 +60,7 @@ import com.datamelt.util.RowFieldCollection;
  * 
  * The source topic data is expected to be in JSON format. Output will be in JSON format.
  * 
- * @author uwe geercken - 2018-09-14
+ * @author uwe geercken - 2018-11-03
  *
  */
 public class RuleEngineConsumerProducer implements Runnable 
@@ -81,9 +81,9 @@ public class RuleEngineConsumerProducer implements Runnable
 	private String kafkaTopicFailed;
 	private String ruleEngineZipFile;
 	private String ruleEngineZipFileWithoutPath;
-	private int ruleEngineZipFileCheckModifiedInterval 				= 60; //Default
+	private int ruleEngineZipFileCheckModifiedInterval 				 = 60; //Default
 	
-	private WatchService watcher = FileSystems.getDefault().newWatchService();
+	private WatchService watcher 									 = FileSystems.getDefault().newWatchService();
 	private WatchKey key;
 	
 	private static volatile boolean keepRunning 					 = true;
@@ -155,7 +155,7 @@ public class RuleEngineConsumerProducer implements Runnable
 		catch(Exception ex)
 		{
 			KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "error processing the ruleengine project file: [" + ruleEngineProjectFile + "]");
-			KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "no data will be consumed from the kafka topic until a valid project file was processed");
+			KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "NO data will be consumed from the kafka topic until a valid project file was processed");
 			// we do not want to start reading data, if the ruleengine produced an exception
 			keepRunning=false;
 			
@@ -189,7 +189,7 @@ public class RuleEngineConsumerProducer implements Runnable
 					startTime = currentTime;
 					if(errorReloadingProjectZipFile)
 					{
-						KafkaRuleEngine.log(Constants.LOG_LEVEL_INFO, "currently no data is processed because of an error reloading the project zip file: [" + ruleEngineZipFile + "]");
+						KafkaRuleEngine.log(Constants.LOG_LEVEL_INFO, "currently NO data is processed because of an error reloading the project zip file: [" + ruleEngineZipFile + "]");
 					}
 					KafkaRuleEngine.log(Constants.LOG_LEVEL_DETAILED, "checking if project zip file has changed: [" + ruleEngineZipFile + "]");
 					boolean reload = checkFileChanges();
@@ -291,6 +291,7 @@ public class RuleEngineConsumerProducer implements Runnable
 							}
 							
 							// clear the collection of details/result
+							// this also clears the counters of passed and failed groups and others
 							ruleEngine.getRuleExecutionCollection().clear();
 
 						}

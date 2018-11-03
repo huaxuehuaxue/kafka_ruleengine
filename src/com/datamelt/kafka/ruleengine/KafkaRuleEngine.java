@@ -27,10 +27,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.Properties;
-import java.util.concurrent.ExecutionException;
 
-import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.clients.admin.ListTopicsOptions;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 
 import com.datamelt.rules.core.ReferenceField;
 import com.datamelt.rules.engine.BusinessRulesEngine;
@@ -114,30 +112,29 @@ public class KafkaRuleEngine
 			
 			String ruleEngineVersion = "[" + BusinessRulesEngine.getVersion() + "] - last update: [" + BusinessRulesEngine.getLastUpdateDate() + "]";
 
-			log(Constants.LOG_LEVEL_ALL, "Start of KafkaRuleEngine program...");
-			log(Constants.LOG_LEVEL_INFO, "JaRE ruleengine version: " + ruleEngineVersion);
-			log(Constants.LOG_LEVEL_DETAILED,"properties for the ruleengine => " + properties.toString());
-			log(Constants.LOG_LEVEL_DETAILED,"properties for kafka consumer => " + kafkaConsumerProperties.toString());
-			log(Constants.LOG_LEVEL_DETAILED,"properties for kafka producer => " + kafkaProducerProperties.toString());
-			log(Constants.LOG_LEVEL_DETAILED,"properties for admin client => " + adminClientProperties.toString());
-			log(Constants.LOG_LEVEL_ALL, "kafka brokers: " + getProperty(Constants.PROPERTY_KAFKA_BROKERS));
-			log(Constants.LOG_LEVEL_ALL, "kafka source topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE));
-			log(Constants.LOG_LEVEL_ALL, "ruleengine project file: " + args[3]);
-			log(Constants.LOG_LEVEL_ALL, "ruleengine project file check interval (seconds): " + getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL));
-			log(Constants.LOG_LEVEL_ALL, "kafka target topic: " + targetTopic);
-			log(Constants.LOG_LEVEL_ALL, "kafka failed topic: " + failedTopic);
-			log(Constants.LOG_LEVEL_ALL, "kafka logging topic: " + loggingTopic);
+			log(Constants.LOG_LEVEL_ALL, 		"Start of KafkaRuleEngine program...");
+			log(Constants.LOG_LEVEL_INFO, 		"JaRE ruleengine version: " + ruleEngineVersion);
+			log(Constants.LOG_LEVEL_DETAILED,	"properties for the ruleengine => " + properties.toString());
+			log(Constants.LOG_LEVEL_DETAILED,	"properties for kafka consumer => " + kafkaConsumerProperties.toString());
+			log(Constants.LOG_LEVEL_DETAILED,	"properties for kafka producer => " + kafkaProducerProperties.toString());
+			log(Constants.LOG_LEVEL_DETAILED,	"properties for admin client => " + adminClientProperties.toString());
+			log(Constants.LOG_LEVEL_ALL, 		"kafka brokers: " + getProperty(Constants.PROPERTY_KAFKA_BROKERS));
+			log(Constants.LOG_LEVEL_ALL, 		"kafka source topic: " + getProperty(Constants.PROPERTY_KAFKA_TOPIC_SOURCE));
+			log(Constants.LOG_LEVEL_ALL, 		"ruleengine project file: " + args[3]);
+			log(Constants.LOG_LEVEL_ALL, 		"ruleengine project file check interval (seconds): " + getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL));
+			log(Constants.LOG_LEVEL_ALL, 		"kafka target topic: " + targetTopic);
+			log(Constants.LOG_LEVEL_ALL, 		"kafka failed topic: " + failedTopic);
+			log(Constants.LOG_LEVEL_ALL, 		"kafka logging topic: " + loggingTopic);
 			log(Constants.LOG_LEVEL_ALL, "");
 			
 			// check if the zip file is present and accessible and if the ruleengine properties file is ok as well
 			boolean zipFileOk = ruleEngineProjectZipFileOk(args[3]); 
 			if(zipFileOk && propertiesFileOk)
 			{
-				// check if we can get a list of topics from the brokers using the AdminClient
+				// check if we can get a list of topics from the brokers
 				// if not, then the brokers are probably not available
-				//boolean kafkaBrokersAvailable = brokersAvailable();
-				boolean kafkaBrokersAvailable = true;
-				if(kafkaBrokersAvailable)
+				boolean consumerCanListTopics = consumerCanListTopics(kafkaConsumerProperties);
+				if(consumerCanListTopics)
 				{
 					
 					// create a RuleEngineConsumerProducer instance and run it
@@ -317,30 +314,24 @@ public class KafkaRuleEngine
     }
 	
 	/**
-	 * checks is the specified broker(s) is (are) available
+	 * checks if the consumer is able to list topics.
 	 * 
-	 * A check using the AdminClient is made to retrieve a list of topics. If this fails
+	 * An attempt is made to retrieve a list of topics. If this fails
 	 * then it is assumed that the broker(s) is (are) not available
 	 * 
-	 * @return		boolean indicator is broker(s) is (are) available
+	 * @return		boolean indicator if the consumer can list topics
 	 */
-	private static boolean brokersAvailable()
+	private static boolean consumerCanListTopics(Properties kafkaConsumerProperties)
 	{
-		try (AdminClient client = AdminClient.create(adminClientProperties)) 
+		try(KafkaConsumer<String,String> kafkaConsumer = new KafkaConsumer<>(kafkaConsumerProperties);)
 		{
-			client.listTopics(new ListTopicsOptions().timeoutMs(Constants.ADMIN_CLIENT_TIMEOUT_MS)).listings().get();
+			kafkaConsumer.listTopics();
 			return true;
 		}
-		catch(ExecutionException cex)
+		catch(Exception ex)
 		{
-			log(Constants.LOG_LEVEL_ERROR,cex.getMessage());
 			return false;
 		}
-		catch (Exception ex)
-		{
-			log(Constants.LOG_LEVEL_ERROR,ex.getMessage());
-			return false;
-        }
 	}
 	
 	/**
@@ -372,37 +363,37 @@ public class KafkaRuleEngine
 			boolean existField = collection.existField(referenceField.getName());
 			if(!existField)
 			{
-				if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_STRING)
+				if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_STRING)
 				{
 					String value = "";
 					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
 					collection.addField(referenceField.getName(),value);
 				}
-				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_INTEGER)
+				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_INTEGER)
 				{
 					int value=0;
 					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
 					collection.addField(referenceField.getName(),value);
 				}
-				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_LONG)
+				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_LONG)
 				{
 					long value=0;
 					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
 					collection.addField(referenceField.getName(),value);
 				}
-				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_DOUBLE)
+				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_DOUBLE)
 				{
 					double value=0.0d;
 					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
 					collection.addField(referenceField.getName(),value);
 				}
-				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_FLOAT)
+				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_FLOAT)
 				{
 					float value=0.0f;
 					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
 					collection.addField(referenceField.getName(),value);
 				}
-				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_BOOLEAN)
+				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_BOOLEAN)
 				{
 					boolean value=false;
 					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
@@ -414,7 +405,7 @@ public class KafkaRuleEngine
 					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
 					collection.addField(referenceField.getName(),value);
 				}
-				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_DATE)
+				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_DATE)
 				{
 					Date value=null;
 					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
