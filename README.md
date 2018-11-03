@@ -8,7 +8,7 @@ logic for checking data and also actions may be defined to update the data. Chec
 https://github.com/uwegeercken/rule_maintenance_war for more information.
 
 Documentation for the ruleengine, the Business Rules maintenance Web tool and for all available checks and actions
-is available at:https://github.com/uwegeercken/rule_maintenance_documentation
+is available at: https://github.com/uwegeercken/rule_maintenance_documentation.
 
 The program requires a properties file, which defines the settings for the program.
 
