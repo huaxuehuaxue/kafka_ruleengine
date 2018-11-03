@@ -491,7 +491,7 @@ public class KafkaRuleEngine
 			outputToFailedTopic = true;
 		}
 		
-		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS)!=null && getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS).equals(""))
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS).equals(""))
 		{
 			String[] fields = getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS).split(Constants.PROPERTY_VALUES_SEPARATOR);
 			excludedFields = new ArrayList<String>(Arrays.asList(fields));
