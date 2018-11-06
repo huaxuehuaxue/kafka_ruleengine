@@ -46,8 +46,9 @@ public class KafkaRuleEngine
 	private static Properties kafkaProducerProperties						 = new Properties();
 	private static SimpleDateFormat sdf 							 		 = new SimpleDateFormat(Constants.DATETIME_FORMAT);
 	private static boolean outputToFailedTopic								 = false;
+	private static boolean dropFailedMessages							 	 = false;	
 	private static int failedMode										 	 = 0;
-	private static int failedNumberOfGroups							 	 	 = 0;
+	private static int minimumFailedNumberOfGroups							 	 	 = 0;
 	private static long kafkaConsumerPoll									 = 100;
 	private static ArrayList<String> excludedFields							 = new ArrayList<>();
 	
@@ -149,7 +150,8 @@ public class KafkaRuleEngine
 						ruleEngineConsumerProducer.setRuleEngineZipFileCheckModifiedInterval(Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_ZIP_FILE_CHECK_INTERVAL)));
 						
 						ruleEngineConsumerProducer.setFailedMode(failedMode);
-						ruleEngineConsumerProducer.setFailedNumberOfGroups(failedNumberOfGroups);
+						ruleEngineConsumerProducer.setDropFailedMessages(dropFailedMessages);
+						ruleEngineConsumerProducer.setMinimumFailedNumberOfGroups(minimumFailedNumberOfGroups);
 						ruleEngineConsumerProducer.setKafkaConsumerPoll(kafkaConsumerPoll);
 						ruleEngineConsumerProducer.setOutputToFailedTopic(outputToFailedTopic);
 						
@@ -464,28 +466,47 @@ public class KafkaRuleEngine
 		// the data is regarded as failed
 		if(failedMode==0)
 		{
-			if(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS)!=null && !getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS).equals(""))
+			if(getProperty(Constants.PROPERTY_RULEENGINE_MINIMUM_FAILED_NUMBER_OF_GROUPS)!=null && !getProperty(Constants.PROPERTY_RULEENGINE_MINIMUM_FAILED_NUMBER_OF_GROUPS).equals(""))
 			{
 				try
 				{
-					failedNumberOfGroups = Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS));
+					minimumFailedNumberOfGroups = Integer.parseInt(getProperty(Constants.PROPERTY_RULEENGINE_MINIMUM_FAILED_NUMBER_OF_GROUPS));
 				}
 				catch(Exception ex)
 				{
-					log(Constants.LOG_LEVEL_ERROR,"error converting property to integer value [ " + Constants.PROPERTY_RULEENGINE_FAILED_NUMBER_OF_GROUPS + "] from properties file [" + propertiesFilename + "]");
+					log(Constants.LOG_LEVEL_ERROR,"error converting property to integer value [ " + Constants.PROPERTY_RULEENGINE_MINIMUM_FAILED_NUMBER_OF_GROUPS + "] from properties file [" + propertiesFilename + "]");
 				}
 			}
 		}
 
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS).equals(""))
+		{
+			try
+			{
+				String[] fields = getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS).split(Constants.PROPERTY_VALUES_SEPARATOR);
+				excludedFields = new ArrayList<String>(Arrays.asList(fields));
+			}
+			catch(Exception ex)
+			{
+				log(Constants.LOG_LEVEL_ERROR,"error parsing exclude fields [ " + Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS + "] from properties file [" + propertiesFilename + "]");
+			}
+		}
+		
 		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_TARGET_FAILED).equals(""))
 		{
 			outputToFailedTopic = true;
 		}
 		
-		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS).equals(""))
+		if(getProperty(Constants.PROPERTY_KAFKA_TOPIC_DROP_FAILED)!=null && !getProperty(Constants.PROPERTY_KAFKA_TOPIC_DROP_FAILED).equals(""))
 		{
-			String[] fields = getProperty(Constants.PROPERTY_KAFKA_TOPIC_EXCLUDE_FIELDS).split(Constants.PROPERTY_VALUES_SEPARATOR);
-			excludedFields = new ArrayList<String>(Arrays.asList(fields));
+			try
+			{
+				dropFailedMessages = Boolean.parseBoolean(getProperty(Constants.PROPERTY_KAFKA_TOPIC_DROP_FAILED));
+			}
+			catch(Exception ex)
+			{
+				log(Constants.LOG_LEVEL_ERROR,"error converting property to boolean value [ " + Constants.PROPERTY_KAFKA_TOPIC_DROP_FAILED + "] from properties file [" + propertiesFilename + "]");
+			}
 		}
 	}
 	
