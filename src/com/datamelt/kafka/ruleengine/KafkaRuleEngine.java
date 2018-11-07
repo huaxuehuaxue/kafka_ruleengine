@@ -38,7 +38,7 @@ import com.datamelt.util.RowFieldCollection;
 
 public class KafkaRuleEngine
 {
-	private static ArrayList<RowField> ruleEngineProjectFileReferenceFields  = new ArrayList<RowField>();
+	private static ArrayList<RowField> ruleEngineProjectFileReferenceFields;
 	private static Properties properties 									 = new Properties();
 	private static String propertiesFilename;
 	private static Properties adminClientProperties							 = new Properties();
@@ -359,66 +359,70 @@ public class KafkaRuleEngine
 	 */
 	public static void addReferenceFields(ArrayList <ReferenceField>referenceFields, RowFieldCollection collection)
 	{
-		for(int i=0;i<referenceFields.size();i++)
+		// if we have not initialized the list of ruleEngineProjectFileReferenceFields
+		// then initialize it and determine the field types and set the defaults as appropriate.
+		// this is done on the first message only.
+		if(ruleEngineProjectFileReferenceFields==null)
 		{
-			ReferenceField referenceField = referenceFields.get(i);
-			boolean existField = collection.existField(referenceField.getName());
-			if(!existField)
+			ruleEngineProjectFileReferenceFields = new ArrayList<RowField>();
+			for(int i=0;i<referenceFields.size();i++)
 			{
-				if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_STRING)
+				ReferenceField referenceField = referenceFields.get(i);
+				boolean existField = collection.existField(referenceField.getName());
+				if(!existField)
 				{
-					String value = "";
-					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
-					collection.addField(referenceField.getName(),value);
-				}
-				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_INTEGER)
-				{
-					int value=0;
-					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
-					collection.addField(referenceField.getName(),value);
-				}
-				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_LONG)
-				{
-					long value=0;
-					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
-					collection.addField(referenceField.getName(),value);
-				}
-				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_DOUBLE)
-				{
-					double value=0.0d;
-					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
-					collection.addField(referenceField.getName(),value);
-				}
-				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_FLOAT)
-				{
-					float value=0.0f;
-					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
-					collection.addField(referenceField.getName(),value);
-				}
-				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_BOOLEAN)
-				{
-					boolean value=false;
-					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
-					collection.addField(referenceField.getName(),value);
-				}
-				else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_BIGDECIMAL)
-				{
-					BigDecimal value=new BigDecimal(0);
-					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
-					collection.addField(referenceField.getName(),value);
-				}
-				else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_DATE)
-				{
-					Date value=null;
-					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
-					collection.addField(referenceField.getName(),value);
-				}
-				else
-				{
-					ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName()));
-					collection.addField(referenceField.getName(),null);
+					if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_STRING)
+					{
+						String value = "";
+						ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					}
+					else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_INTEGER)
+					{
+						int value=0;
+						ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					}
+					else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_LONG)
+					{
+						long value=0;
+						ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					}
+					else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_DOUBLE)
+					{
+						double value=0.0d;
+						ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					}
+					else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_FLOAT)
+					{
+						float value=0.0f;
+						ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					}
+					else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_BOOLEAN)
+					{
+						boolean value=false;
+						ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					}
+					else if(referenceField.getJavaTypeId()==ReferenceField.FIELD_TYPE_ID_BIGDECIMAL)
+					{
+						BigDecimal value=new BigDecimal(0);
+						ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					}
+					else if(referenceField.getJavaTypeId() == ReferenceField.FIELD_TYPE_ID_DATE)
+					{
+						Date value=null;
+						ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName(),value));
+					}
+					else
+					{
+						ruleEngineProjectFileReferenceFields.add(new RowField(referenceField.getName()));
+					}
 				}
 			}
+		}
+
+		// add reference fields to the rowfield collection
+		for(int i=0;i<ruleEngineProjectFileReferenceFields.size();i++)
+		{
+			collection.addField(ruleEngineProjectFileReferenceFields.get(i));
 		}
 	}
 	

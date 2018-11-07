@@ -258,7 +258,7 @@ public class RuleEngineConsumerProducer implements Runnable
 							// status of failed
 							boolean failedMessage = false;
 							
-							// depending on the selected mode, the ruleengine returns if the message failed
+							// depending on the selected mode (PROPERTY_RULEENGINE_FAILED_MODE), the ruleengine returns if the message failed
 							if(failedMode != 0 && ruleEngine.getRuleGroupsStatus(failedMode))
 							{
 								failedMessage = true;
