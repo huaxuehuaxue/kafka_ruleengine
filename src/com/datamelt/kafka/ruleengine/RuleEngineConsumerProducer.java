@@ -50,7 +50,7 @@ import com.datamelt.util.FormatConverter;
 import com.datamelt.util.RowFieldCollection;
 
 /**
- * Reads JSON formatted data from a Kafka topic, runs business rules (logic) on the data and
+ * Reads JSON or CSV formatted data from a Kafka topic, runs business rules (logic) on the data and
  * outputs the resulting data to a Kafka target topic.
  * 
  * Optionally the detailed results of the execution of the ruleengine may be ouput to a defined
@@ -58,9 +58,9 @@ import com.datamelt.util.RowFieldCollection;
  * input message and rule. E.g. if there are 10 rules in the ruleengine project file, then for any
  * received input message, 10 output messages are generated.
  * 
- * The source topic data is expected to be in JSON format. Output will be in JSON format.
+ * The source topic data is expected to be in JSON or CSV format. Output will be in JSON format.
  * 
- * @author uwe geercken - 2018-11-03
+ * @author uwe geercken - 2018-11-06
  *
  */
 public class RuleEngineConsumerProducer implements Runnable 
@@ -68,8 +68,9 @@ public class RuleEngineConsumerProducer implements Runnable
 	private Properties kafkaConsumerProperties						 = new Properties();
 	private Properties kafkaProducerProperties						 = new Properties();
 	private boolean outputToFailedTopic								 = false; //default
+	private boolean dropFailedMessages								 = false; //default
 	private int failedMode										 	 = 0; //default
-	private int failedNumberOfGroups							 	 = 0; //default
+	private int minimumFailedNumberOfGroups							 = 0; //default
 	private long kafkaConsumerPoll									 = 100; //default
 	private boolean preserveRuleExecutionResults					 = true; //default
 	private String kafkaTopicSourceFormat							 = "json"; //default
@@ -161,7 +162,7 @@ public class RuleEngineConsumerProducer implements Runnable
 			
 		}
 		
-		// create consumer and producers for the source topic
+		// create consumer and producers for the topics
 		try(
 				KafkaConsumer<String, String> kafkaConsumer = new KafkaConsumer<>(kafkaConsumerProperties);
 				KafkaProducer<String, String> kafkaProducer = new KafkaProducer<>(kafkaProducerProperties);
@@ -169,9 +170,10 @@ public class RuleEngineConsumerProducer implements Runnable
 				KafkaProducer<String, String> kafkaProducerFailed = new KafkaProducer<>(kafkaProducerProperties)
 			)
 		{
-			// subscribe to the given kafka topic
+			// subscribe consumer to the given kafka topic
 			kafkaConsumer.subscribe(Arrays.asList(kafkaTopicSource));
 			
+			// indicator if loading the ruleengine project zip file produced an error
 			boolean errorReloadingProjectZipFile = false;
 			
 			// process while we receive messages and if we haven't encountered an exception
@@ -252,55 +254,66 @@ public class RuleEngineConsumerProducer implements Runnable
 							// format the values from the rowfield collection as json for output
 							JSONObject jsonMessage = FormatConverter.convertToJson(collection, KafkaRuleEngine.getExcludedFields()); 
 							
-							// if we don't have a topic specified for the failed messages, then all
-							// messages are sent to the target topic
-							if(!outputToFailedTopic)
+							// check if according to the settings the message has a ruleengine 
+							// status of failed
+							boolean failedMessage = false;
+							
+							// depending on the selected mode (PROPERTY_RULEENGINE_FAILED_MODE), the ruleengine returns if the message failed
+							if(failedMode != 0 && ruleEngine.getRuleGroupsStatus(failedMode))
 							{
-								// send the resulting data to the target topic
-								sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
+								failedMessage = true;
 							}
-							else
+							// if failedMode is equal to 0, then the user specifies the minimum number
+							// of groups that must have failed to regard the data as failed
+							else if(failedMode == 0 && ruleEngine.getRuleGroupsMinimumNumberFailed(minimumFailedNumberOfGroups)) 
 							{
-								// depending on the selected mode the ruleengine returns if
-								// this status is true/valid
-								if(failedMode != 0 && ruleEngine.getRuleGroupsStatus(failedMode))
+								failedMessage = true;
+							}
+							
+							// failed messages
+							if(failedMessage)
+							{
+								// if an output topic for failed messages is defined and we don't drop failed messages
+								// send message to failed topic
+								if(!dropFailedMessages && outputToFailedTopic)
 								{
 									// send the message to the target topic for failed messages
 									sendFailedTargetTopicMessage(kafkaProducerFailed, record.key(), jsonMessage);
 								}
-								// if failedMode is equal to 0, then the user specifies the minimum number
-								// of groups that must have failed to regard the data as failed
-								else if(failedMode == 0 && ruleEngine.getRuleGroupsMinimumNumberFailed(failedNumberOfGroups)) 
+								// if output topic for failed messages is undefined and we don't drop failed messages
+								// send message to the target topic
+								else if(!dropFailedMessages && !outputToFailedTopic)
 								{
 									// send the message to the target topic for failed messages
-									sendFailedTargetTopicMessage(kafkaProducerFailed, record.key(), jsonMessage);
-								}
-								else
-								{
-									// otherwise send message to target topic
 									sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
 								}
 							}
-	
+							// passed messages
+							else
+							{
+								// all passed messages go to the target topic
+								sendTargetTopicMessage(kafkaProducer, record.key(), jsonMessage);
+							}
+							
 							// send the rule execution details as message(s) to the logging topic, if one is defined.
 							// if no logging topic is defined, then no execution details will be generated 
-							// as ruleEngine.setPreserveRuleExcecutionResults() is set to "false"
+							// (when ruleEngine.setPreserveRuleExcecutionResults() is set to "false")
 							if(ruleEngine.getPreserveRuleExcecutionResults())
 							{
 								sendLoggingTargetTopicMessage(kafkaProducerLogging, record.key(), jsonMessage, ruleEngine);
 							}
 							
-							// clear the collection of details/result
+							// clear the collection of details/result otherwise results accumulate
 							// this also clears the counters of passed and failed groups and others
 							ruleEngine.getRuleExecutionCollection().clear();
 
 						}
-						// if we have a parsing problem with the JSON message, we continue processing
+						// if we have a parsing problem with the JSON message, we log this and continue processing
 						catch(JSONException jex)
 						{
-							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "error parsing message: [" + record.value() + "]");
+							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "error parsing message: key = [" + record.key() + "], value = [" + record.value() + "]");
 						}
-						// if we have a problem with SSL
+						// if we have a problem with SSL we log this and STOP processing
 						catch (javax.net.ssl.SSLProtocolException sslex)
 						{
 							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "server refused certificate or other SSL protocol exception");
@@ -308,7 +321,7 @@ public class RuleEngineConsumerProducer implements Runnable
 							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, "stopping the service");
 							keepRunning=false;
 						}
-						// if we have any other exception 
+						// if we have any other exception we log this and STOP processing
 						catch(Exception ex)
 						{
 							KafkaRuleEngine.log(Constants.LOG_LEVEL_ERROR, ex.getMessage());
@@ -366,8 +379,8 @@ public class RuleEngineConsumerProducer implements Runnable
 	 * submits the message to the kafka topic for logging
 	 * 
 	 * for each input message from the source topic and for each rule defined in the ruleengine project file
-	 * one message is created. So if there are 10 rules defined, then this method generates ten messages - one
-	 * for each rule.
+	 * one message is created. So for each incomming message, if there are 10 rules defined, then this method generates 10 messages
+	 * - one for each rule. so this potentially creates a lot of data.
 	 * 
 	 * there are several fields added to the output message which are details of the execution of the ruleengine and rules.
 	 * E.g. if the group, subgroup or rule failed, the rule message and the logical operators of the subgroups and rules.
@@ -442,14 +455,14 @@ public class RuleEngineConsumerProducer implements Runnable
 		this.failedMode = failedMode;
 	}
 
-	public int getFailedNumberOfGroups()
+	public int getMinimumFailedNumberOfGroups()
 	{
-		return failedNumberOfGroups;
+		return minimumFailedNumberOfGroups;
 	}
 
-	public void setFailedNumberOfGroups(int failedNumberOfGroups)
+	public void setMinimumFailedNumberOfGroups(int minimumFailedNumberOfGroups)
 	{
-		this.failedNumberOfGroups = failedNumberOfGroups;
+		this.minimumFailedNumberOfGroups = minimumFailedNumberOfGroups;
 	}
 
 	public long getKafkaConsumerPoll()
@@ -606,5 +619,17 @@ public class RuleEngineConsumerProducer implements Runnable
 	{
 		this.ruleEngineZipFileCheckModifiedInterval = ruleEngineZipFileCheckModifiedInterval;
 	}
+
+	public boolean getDropFailedMessages() 
+	{
+		return dropFailedMessages;
+	}
+
+	public void setDropFailedMessages(boolean dropFailedMessages)
+	{
+		this.dropFailedMessages = dropFailedMessages;
+	}
+	
+	
 	
 }
